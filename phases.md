@@ -1,0 +1,146 @@
+# phases.md — Development Roadmap
+**Location in repo:** `/docs/phases.md`
+**Depends on:** `PRD.md`, `architecture.md`, `rules.md`
+
+Each phase below is only "complete" when it passes the Quality Gate at the bottom of this document. No phase begins until the prior phase's foundation is verified working.
+
+---
+
+## Phase 0 — Documentation & Design System
+**Objective:** lock product definition before any code.
+**Deliverables:** `PRD.md`, `architecture.md`, `rules.md`, `phases.md`, `design.md` (this set).
+**Completion criteria:** client sign-off on scope, open decisions (`PRD.md` §12) either resolved or explicitly deferred with owner noted.
+
+---
+
+## Phase 1 — Foundation
+**Objective:** project scaffold, auth, DB schema, shared design-system components, Asset/upload service.
+**Features:**
+- Repo structure per `architecture.md` §13.
+- Database schema for core + taxonomy + settings + media entities (`architecture.md` §4).
+- Auth module: registration, login, session/token issuance, auth middleware, role checks (`architecture.md` §5).
+- Redirect-and-resume mechanism (frontend pending-action store + backend replay-safe validation).
+- Shared UI package: Button, Input, Select, Card, Badge, Modal, Tabs, Table, Pagination, Empty/Loading/Error states, and the **generic Carousel component** (`rules.md` §4).
+- Generic `Asset` upload service (validation: type/size/dimensions) used by every later image feature.
+- `BusinessSetting` module (generic settings store + typed read helpers).
+**Dependencies:** Phase 0 sign-off.
+**Testing:** unit tests for auth/session logic and ownership checks; integration test for a protected-route round trip (401 → login → resume).
+**Completion criteria:** a developer can register, log in, hit a protected endpoint and get correctly blocked/resumed; admin settings can be created/read via API.
+
+---
+
+## Phase 2 — Taxonomy & Brand/Category Visual Management *(new, moved earlier per client requirement)*
+**Objective:** categories and brands fully admin-managed and database-driven, since the storefront (Phase 3) and homepage banners (Phase 8) both depend on live taxonomy.
+**Features:**
+- Admin CRUD: Category (name, slug, logo, banner, description, displayOrder, isPublished, parentCategoryId per `PRD.md` §7.2/§12 item #14) and Brand (name, slug, logo, isPublished).
+- Public `GET /categories`, `GET /brands` endpoints (published-only, ordered).
+- Admin publish/unpublish toggle with audit log entry.
+**Dependencies:** Phase 1 (Asset service, admin auth).
+**Testing:** unit test for slug uniqueness/generation; integration test confirming an unpublished category/brand is unreachable via public endpoint (IDOR check per `architecture.md` §10).
+**Completion criteria:** admin can create a category with logo/banner and publish it; it is retrievable via the public API with zero frontend code changes needed later.
+
+---
+
+## Phase 3 — Product Catalog (Public)
+**Objective:** browsing experience.
+**Features:** category/brand listing pages (consuming Phase 2 data live, no hard-coding per `architecture.md` §6), product listing with filters/sort/pagination, search, product detail page, "Shop by Category" and "Shop by Brand" homepage sections rendering live logos.
+**Dependencies:** Phase 2.
+**Testing:** integration test that a newly published category/brand appears in listings/filters without redeploy; responsive/accessibility pass on filter UI.
+**Completion criteria:** full guest browsing journey (PRD §5.1) works end-to-end.
+
+---
+
+## Phase 4 — Cart, Wishlist & COD Checkout
+**Objective:** transactional buying flow, auth-gated.
+**Features:** Cart (guest-visible content, but add-to-cart requires auth per PRD §5.2 → triggers redirect-and-resume), Wishlist, Checkout (no guest checkout), Order creation, Order Confirmation.
+**Dependencies:** Phase 3, Phase 1 auth.
+**Testing:** integration test of the full redirect-and-resume path specifically for "add to cart as guest → login → item is in cart"; stock/price-change edge cases at checkout.
+**Completion criteria:** a real order can be placed end-to-end with COD, correctly blocked/resumed for guests.
+
+---
+
+## Phase 5 — Order Management (Customer + Admin)
+**Objective:** post-purchase visibility and admin fulfillment.
+**Features:** Customer Order History/Detail, Admin Orders list/detail, payment-status updates, order status audit log.
+**Dependencies:** Phase 4.
+**Testing:** ownership-check test (customer A cannot view customer B's order via direct ID manipulation).
+**Completion criteria:** admin can fulfill an order end-to-end; customer sees accurate real-time status.
+
+---
+
+## Phase 6 — Service Catalog (Admin CRUD + Public Pages)
+**Objective:** services as dynamic, admin-managed entities.
+**Features:** Admin Service CRUD (price range, duration, publish), public Services listing + Service Detail.
+**Dependencies:** Phase 1 (Asset service if services have images), independent of catalog phases otherwise.
+**Testing:** validation test that priceMin ≤ priceMax is enforced.
+**Completion criteria:** admin can add a new bookable service with zero code change, visible publicly.
+
+---
+
+## Phase 7 — Scheduling/Availability Engine (Backend-first, headless)
+**Objective:** the hardest correctness requirement — must be built and proven before any booking UI is built on top of it.
+**Features:** Business hours/holiday config, buffer time, minimum booking notice (all via `BusinessSetting`), slot generation, temporary slot holds, overlap/double-booking prevention (DB constraint + transaction-level check per `architecture.md` §4.2), nearest-slot suggestion logic.
+**Dependencies:** Phase 6, Phase 1 settings module.
+**Testing:** heavy unit/integration testing here specifically — concurrent booking-attempt test proving double-booking is structurally impossible, not just discouraged by the UI.
+**Completion criteria:** availability API correctly reflects all configured constraints and cannot be raced into a double booking.
+
+---
+
+## Phase 8 — Guided Booking Flow (Public) + Booking Management + Homepage Hero Banners
+**Objective:** the customer-facing booking experience, plus homepage promotional banners (grouped here since both depend on live Category/Service data being stable).
+**Features:**
+- Multi-step booking wizard (service → device → problem [+ optional photo upload] → date/time → address [validated against serviceable areas] → confirm), auth-gated with full resume-after-login (per PRD §5.4/§12 item #12: all step data preserved).
+- Booking Confirmation, Booking Tracking, Cancellation/Reschedule (2-hr cutoff rule, hard-blocked post "Technician On The Way").
+- Admin Bookings (list + calendar), Booking Detail, status transitions, final-price entry (audit-logged).
+- **Homepage Hero Banner** admin CRUD (upload, target-category FK, reorder, publish) using the same generic Carousel component from Phase 1, and public rendering with prev/next + swipe + hover-pause behavior (`PRD.md` §8).
+**Dependencies:** Phase 7 (scheduling engine), Phase 2 (categories, for banner target FK).
+**Testing:** end-to-end test of full booking creation and of cancellation-cutoff enforcement; test that re-pointing a banner's target category updates its live click destination immediately.
+**Completion criteria:** a customer can complete a real booking end-to-end; admin can fully manage banners with zero hard-coded links.
+
+---
+
+## Phase 9 — Customer Account Area
+**Objective:** consolidate everything customer-facing into one dashboard.
+**Features:** Dashboard overview, Orders, Order Detail, Bookings, Booking Detail, Profile, Addresses, Wishlist view, Notifications.
+**Dependencies:** Phases 4, 5, 8.
+**Completion criteria:** all customer self-service journeys accessible from one place, mobile responsive.
+
+---
+
+## Phase 10 — Reviews & Review Showcase
+**Objective:** trust-building content, two distinct systems.
+**Features:** Product/Service Review submission (verified-purchase/completed-booking eligibility check, per `rules.md` §8), public review display; **Review Showcase** admin CRUD + public carousel (reusing the Phase 1 Carousel component with lightbox enabled), IDOR-safe published-only public endpoint.
+**Dependencies:** Phase 5 (verified purchase check), Phase 8 (verified booking check), Phase 1 (Carousel, Asset).
+**Testing:** test that an unverified user cannot submit a review; test that unpublished showcase items are unreachable publicly.
+**Completion criteria:** both review systems function independently and correctly gate submission eligibility.
+
+---
+
+## Phase 11 — Notifications
+**Objective:** website + email notifications for order/booking status changes.
+**Dependencies:** Phases 5, 8.
+**Completion criteria:** status-change events reliably trigger the correct notification channel(s).
+
+---
+
+## Phase 12 — Hardening
+**Objective:** security review, performance pass, accessibility audit, SEO, full responsive QA across every phase's screens — including both carousels, all admin CRUD screens, and the full booking/checkout flows.
+**Dependencies:** all feature phases complete.
+**Completion criteria:** production-readiness checklist (per original brief) fully green.
+
+---
+
+## Phase 13 — Deployment
+**Objective:** go-live.
+**Dependencies:** Phase 12.
+**Completion criteria:** production environment configured (env vars, HTTPS, CORS, logging, error monitoring, DB backups considered), smoke-tested in production.
+
+---
+
+## Quality Gate (applies to every phase above)
+A phase is not marked complete unless:
+- Requirement implemented as specified in `PRD.md`.
+- Architecture from `architecture.md` followed (no ad hoc shortcuts).
+- Rules from `rules.md` followed (no hard-coded values, proper auth enforcement, tests present).
+- No regression introduced in a previously completed phase (explicitly re-verify, don't assume).
+- Responsive and accessibility behavior checked for any new screen/component.

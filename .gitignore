@@ -1,0 +1,32 @@
+# ── Dependencies ──────────────────────────────────────────────────────────────
+node_modules/
+
+# ── Build outputs ────────────────────────────────────────────────────────────
+apps/*/dist/
+
+# ── Environment / secrets ────────────────────────────────────────────────────
+server/.env
+server/.env.backup
+server/.env.production
+
+# ── Laravel / PHP ────────────────────────────────────────────────────────────
+server/vendor/
+server/.phpunit.result.cache
+server/.phpunit.cache/
+server/storage/pail
+server/storage/*.key
+server/public/build/
+server/public/hot
+
+# ── Uploads (keep directory structure via .gitkeep) ──────────────────────────
+server/storage/uploads/*
+!server/storage/uploads/.gitkeep
+
+# ── OS / IDE ─────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+*.log
+*.sw?
+.idea/
+.vscode/
+!.vscode/extensions.json

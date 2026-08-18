@@ -1,0 +1,38 @@
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Str;
+
+class Asset extends Model
+{
+    protected $fillable = [
+        'uuid',
+        'disk',
+        'path',
+        'original_name',
+        'mime_type',
+        'size',
+        'width',
+        'height',
+        'alt_text',
+        'uploaded_by',
+    ];
+
+    protected static function booted(): void
+    {
+        static::creating(function (Asset $asset) {
+            if (!$asset->uuid) {
+                $asset->uuid = (string) Str::uuid();
+            }
+        });
+    }
+
+    public function getUrlAttribute(): string
+    {
+        $diskUrl = config("filesystems.disks.{$this->disk}.url", '');
+
+        return "{$diskUrl}/{$this->path}";
+    }
+}
