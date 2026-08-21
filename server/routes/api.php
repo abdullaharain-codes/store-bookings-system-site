@@ -32,7 +32,6 @@ Route::prefix('v1')->group(function () {
     Route::prefix('admin')
         ->middleware(['auth:sanctum', 'spa', 'admin'])
         ->group(function () {
-            // Temporary test route for AdminMiddlewareTest — remove after Phase 2
-            Route::get('/ping', fn () => response()->json(['ok' => true]));
+            //
         });
 });

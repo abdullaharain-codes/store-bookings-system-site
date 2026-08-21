@@ -11,6 +11,7 @@ class Asset extends Model
         'uuid',
         'disk',
         'path',
+        'thumbnail_path',
         'original_name',
         'mime_type',
         'size',
@@ -34,5 +35,16 @@ class Asset extends Model
         $diskUrl = config("filesystems.disks.{$this->disk}.url", '');
 
         return "{$diskUrl}/{$this->path}";
+    }
+
+    public function getThumbnailUrlAttribute(): ?string
+    {
+        if (!$this->thumbnail_path) {
+            return null;
+        }
+
+        $diskUrl = config("filesystems.disks.{$this->disk}.url", '');
+
+        return "{$diskUrl}/{$this->thumbnail_path}";
     }
 }

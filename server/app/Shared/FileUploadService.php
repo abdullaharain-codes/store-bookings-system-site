@@ -39,8 +39,18 @@ class FileUploadService
         'booking-attachments',
     ];
 
+    private const THUMBNAIL_MAX_WIDTH = 400;
+    private const THUMBNAIL_MAX_HEIGHT = 400;
+
+    private ImageManager $imageManager;
+
+    public function __construct()
+    {
+        $this->imageManager = new ImageManager(new Driver());
+    }
+
     /**
-     * Store an uploaded file and create an Asset record.
+     * Store an uploaded file with a thumbnail variant and create an Asset record.
      */
     public function store(
         UploadedFile $file,
@@ -53,14 +63,24 @@ class FileUploadService
         $this->validateFile($file, $category);
         $this->validateDimensions($file, $dimensionPreset);
 
-        $filename = $this->generateFilename($file);
-        $path = Storage::disk('uploads')->putFile($category, $file, $filename);
+        $uuid = (string) \Illuminate\Support\Str::uuid();
+        $extension = strtolower($file->getClientOriginalExtension());
+
+        $fullFilename = "{$uuid}.{$extension}";
+        $thumbFilename = "{$uuid}-thumb.{$extension}";
+
+        $disk = Storage::disk('uploads');
+
+        $fullPath = $disk->putFileAs($category, $file, $fullFilename);
+
+        $thumbnailPath = $this->createThumbnail($file, $category, $thumbFilename);
 
         $dimensions = $this->getImageDimensions($file);
 
         return Asset::create([
             'disk' => 'uploads',
-            'path' => $path,
+            'path' => $fullPath,
+            'thumbnail_path' => $thumbnailPath,
             'original_name' => $file->getClientOriginalName(),
             'mime_type' => $file->getMimeType(),
             'size' => $file->getSize(),
@@ -72,13 +92,41 @@ class FileUploadService
     }
 
     /**
-     * Delete an asset (record + physical file).
+     * Delete an asset (record + all physical files).
      */
     public function delete(Asset $asset): bool
     {
-        Storage::disk($asset->disk)->delete($asset->path);
+        $disk = Storage::disk($asset->disk);
+
+        $disk->delete($asset->path);
+
+        if ($asset->thumbnail_path) {
+            $disk->delete($asset->thumbnail_path);
+        }
 
         return $asset->delete();
+    }
+
+    private function createThumbnail(UploadedFile $file, string $category, string $thumbFilename): string
+    {
+        $image = $this->imageManager->decodePath($file->getRealPath());
+
+        $image->scaleDown(self::THUMBNAIL_MAX_WIDTH, self::THUMBNAIL_MAX_HEIGHT);
+
+        $encoded = $image->encodeUsingMediaType($file->getMimeType());
+
+        $tempPath = tempnam(sys_get_temp_dir(), 'thumb_');
+        $encoded->save($tempPath);
+
+        $tempFile = new UploadedFile(
+            $tempPath,
+            $thumbFilename,
+            $file->getMimeType(),
+            null,
+            true
+        );
+
+        return Storage::disk('uploads')->putFileAs($category, $tempFile, $thumbFilename);
     }
 
     private function validateCategory(string $category): void
@@ -135,13 +183,5 @@ class FileUploadService
         $dimensions = getimagesize($file->getRealPath());
 
         return $dimensions ? ['width' => $dimensions[0], 'height' => $dimensions[1]] : null;
-    }
-
-    private function generateFilename(UploadedFile $file): string
-    {
-        $uuid = \Illuminate\Support\Str::uuid();
-        $extension = $file->getClientOriginalExtension();
-
-        return "{$uuid}.{$extension}";
     }
 }
