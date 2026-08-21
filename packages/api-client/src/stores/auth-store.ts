@@ -1,5 +1,15 @@
 import { create } from "zustand";
+import axios from "axios";
 import apiClient from "../api-client";
+
+const serverOrigin = new URL(
+  import.meta.env.VITE_API_URL ?? "http://localhost:8000/api/v1"
+).origin;
+
+const csrfClient = axios.create({
+  baseURL: serverOrigin,
+  withCredentials: true,
+});
 
 export interface User {
   id: number;
@@ -12,6 +22,7 @@ interface AuthState {
   user: User | null;
   isAuthenticated: boolean;
   isLoading: boolean;
+  error: string | null;
   login: (email: string, password: string) => Promise<void>;
   register: (
     name: string,
@@ -28,24 +39,25 @@ export const useAuthStore = create<AuthState>((set) => ({
   user: null,
   isAuthenticated: false,
   isLoading: false,
+  error: null,
 
   login: async (email, password) => {
-    set({ isLoading: true });
+    set({ isLoading: true, error: null });
     try {
-      await apiClient.get("/sanctum/csrf-cookie");
+      await csrfClient.get("/sanctum/csrf-cookie");
       await apiClient.post("/auth/login", { email, password });
       const { data } = await apiClient.get("/auth/user");
       set({ user: data.user, isAuthenticated: true, isLoading: false });
     } catch (error) {
-      set({ isLoading: false });
+      set({ isLoading: false, error: "Invalid email or password" });
       throw error;
     }
   },
 
   register: async (name, email, password, passwordConfirmation) => {
-    set({ isLoading: true });
+    set({ isLoading: true, error: null });
     try {
-      await apiClient.get("/sanctum/csrf-cookie");
+      await csrfClient.get("/sanctum/csrf-cookie");
       await apiClient.post("/auth/register", {
         name,
         email,
@@ -55,7 +67,7 @@ export const useAuthStore = create<AuthState>((set) => ({
       const { data } = await apiClient.get("/auth/user");
       set({ user: data.user, isAuthenticated: true, isLoading: false });
     } catch (error) {
-      set({ isLoading: false });
+      set({ isLoading: false, error: "Registration failed. Please check your details and try again." });
       throw error;
     }
   },
