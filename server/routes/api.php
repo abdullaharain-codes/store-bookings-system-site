@@ -7,6 +7,8 @@ use App\Http\Controllers\Api\V1\Admin\BrandController as AdminBrandController;
 use App\Http\Controllers\Api\V1\Admin\CategoryController as AdminCategoryController;
 use App\Http\Controllers\Api\V1\Admin\OrderController as AdminOrderController;
 use App\Http\Controllers\Api\V1\Admin\ProductController as AdminProductController;
+use App\Http\Controllers\Api\V1\Admin\ReviewController as AdminReviewController;
+use App\Http\Controllers\Api\V1\Admin\ReviewShowcaseController as AdminReviewShowcaseController;
 use App\Http\Controllers\Api\V1\Admin\ServiceController as AdminServiceController;
 use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\BannerController as PublicBannerController;
@@ -18,6 +20,8 @@ use App\Http\Controllers\Api\V1\DashboardController;
 use App\Http\Controllers\Api\V1\OrderController;
 use App\Http\Controllers\Api\V1\ProductController as PublicProductController;
 use App\Http\Controllers\Api\V1\ProfileController;
+use App\Http\Controllers\Api\V1\ReviewController as PublicReviewController;
+use App\Http\Controllers\Api\V1\ReviewShowcaseController as PublicReviewShowcaseController;
 use App\Http\Controllers\Api\V1\ServiceController as PublicServiceController;
 use App\Http\Controllers\Api\V1\WishlistController;
 use Illuminate\Support\Facades\Route;
@@ -41,12 +45,25 @@ Route::prefix('v1')->group(function () {
     Route::get('/services', [PublicServiceController::class, 'index']);
     Route::get('/services/{slug}', [PublicServiceController::class, 'show']);
 
+    // Product/Service reviews public reads (PRD §11 sidebars) — published
+    // reviews of a published target, paginated, no auth. The 404 for a
+    // missing OR unpublished target mirrors the detail controllers (an
+    // unpublished target must not leak its existence).
+    Route::get('/products/{slug}/reviews', [PublicReviewController::class, 'productReviews']);
+    Route::get('/services/{slug}/reviews', [PublicReviewController::class, 'serviceReviews']);
+
     // Homepage banners public read (PRD §8) — the storefront carousel feed:
     // published banners only, whose target category is also published, in
     // admin-defined display order. Frontend resolves targetCategory.slug at
     // click time (design.md §3.7); the destination updates live when an admin
     // re-points a banner. No pagination — curated, admin-ordered set.
     Route::get('/homepage-banners', [PublicBannerController::class, 'index']);
+
+    // Review showcase public read (architecture.md §4 review-showcase module) —
+    // an admin-curated gallery of screenshots of real customer reviews, in
+    // admin-defined display order, paginated. Published items only, no auth.
+    // Each item is its own entity (never joined to the reviews table).
+    Route::get('/review-showcase', [PublicReviewShowcaseController::class, 'index']);
 
     // Auth (session-based Sanctum SPA auth — session handled once by
     // statefulApi()'s EnsureFrontendRequestsAreStateful on the api group)
@@ -114,6 +131,12 @@ Route::prefix('v1')->group(function () {
         // every underlying query is user_id-scoped inside its owning
         // module's service.
         Route::get('/dashboard', [DashboardController::class, 'show']);
+
+        // ── Reviews (PRD §11 sidebars) ────────────────────────────────────
+        // Customer submission of a product/service review. Eligibility (a
+        // delivered order for products, a completed booking for services) is
+        // verified in ReviewService — the client never proves anything.
+        Route::post('/reviews', [PublicReviewController::class, 'store']);
     });
 
     // ── Admin routes (require auth + admin role) ────────────────────────
@@ -167,5 +190,26 @@ Route::prefix('v1')->group(function () {
             Route::post('/homepage-banners/reorder', [AdminBannerController::class, 'reorder']);
             Route::post('/homepage-banners/{homepageBanner}/publish', [AdminBannerController::class, 'publish']);
             Route::post('/homepage-banners/{homepageBanner}/unpublish', [AdminBannerController::class, 'unpublish']);
+
+            // ── Review Showcase (architecture.md §4 review-showcase) ─────────
+            // Admin CRUD + publish/unpublish + reorder of the customer-review
+            // screenshot gallery. Own table (review_showcase_items), never
+            // joined to reviews — the screenshot alone is the content (SRS
+            // §3.4 showcase image rules). Publish state only via the dedicated
+            // endpoints below.
+            Route::apiResource('review-showcase', AdminReviewShowcaseController::class)
+                ->parameters(['review-showcase' => 'reviewShowcaseItem'])
+                ->except(['create', 'edit']);
+            Route::post('/review-showcase/reorder', [AdminReviewShowcaseController::class, 'reorder']);
+            Route::post('/review-showcase/{reviewShowcaseItem}/publish', [AdminReviewShowcaseController::class, 'publish']);
+            Route::post('/review-showcase/{reviewShowcaseItem}/unpublish', [AdminReviewShowcaseController::class, 'unpublish']);
+
+            // ── Reviews moderation (PRD §11 sidebars) ─────────────────────
+            // Admin listing (including unpublished) + the only state changes
+            // a review has: publish/unpublish. No generic update — a review's
+            // content is immutable once submitted (ReleasePlan §12).
+            Route::get('/reviews', [AdminReviewController::class, 'index']);
+            Route::post('/reviews/{review}/publish', [AdminReviewController::class, 'publish']);
+            Route::post('/reviews/{review}/unpublish', [AdminReviewController::class, 'unpublish']);
         });
 });

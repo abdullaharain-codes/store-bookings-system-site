@@ -115,11 +115,14 @@ Notifications tab deferred until Phase 11 (Notifications backend) exists — doc
 ---
 
 ## Phase 10 — Reviews & Review Showcase
+**Status:** ✅ Complete
 **Objective:** trust-building content, two distinct systems.
 **Features:** Product/Service Review submission (verified-purchase/completed-booking eligibility check, per `rules.md` §8), public review display; **Review Showcase** admin CRUD + public carousel (reusing the Phase 1 Carousel component with lightbox enabled), IDOR-safe published-only public endpoint.
 **Dependencies:** Phase 5 (verified purchase check), Phase 8 (verified booking check), Phase 1 (Carousel, Asset).
 **Testing:** test that an unverified user cannot submit a review; test that unpublished showcase items are unreachable publicly.
 **Completion criteria:** both review systems function independently and correctly gate submission eligibility.
+
+Reviews (Step 10.1) and Review Showcase (Step 10.2) verified as architecturally independent — no shared tables, no cross-references. Reviews auto-publish on submission (hybrid decision: eligibility check is the gate; admin retains unpublish/republish power). Review Showcase is fully admin-curated (starts unpublished, goes live only via explicit publish action).
 
 ---
 
@@ -135,6 +138,8 @@ Notifications tab deferred until Phase 11 (Notifications backend) exists — doc
 **Dependencies:** all feature phases complete.
 **Completion criteria:** production-readiness checklist (per original brief) fully green.
 **Hardening follow-up (noted from Sanctum fix):** a login attempt from a non-whitelisted origin currently returns 500 "Session store not set" instead of 401; harden to return a clean 401 for Phase 12.
+**Hardening follow-up (noted from Review duplicate race):** ReviewService::submitReview()'s duplicate check (assertNotDuplicate) is a service-layer check backed by a DB unique constraint, but a genuine race (two simultaneous submit requests for the same user+target) would surface as a raw 500 QueryException, not a clean 422 — low priority (single-user double-submit is an unlikely race, unlike booking slots), but worth a database-exception-to-422 mapping in Phase 12.
+**Hardening follow-up (noted from Reviews/Showcase query counts):** Reviews/ReviewShowcase list endpoints don't have an explicit expectsDatabaseQueryCount assertion (unlike DashboardApiTest) — eager-loading looks correct (with('user:id,name')) but the N+1-safety claim isn't test-proven the same rigorous way. Add query-count assertions in Phase 12 for consistency.
 
 ---
 

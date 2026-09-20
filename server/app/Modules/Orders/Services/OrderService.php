@@ -226,6 +226,24 @@ class OrderService
     }
 
     /**
+     * The DELIVERED order in which this user purchased the product, if any —
+     * the eligibility proof that grants a product review (ReleasePlan §12).
+     *
+     * Returns the order id (recorded on the review as source_id) or null.
+     * Written here on the owning module's service so Reviews never queries
+     * orders/order_items directly (architecture.md §3). A single
+     * exists-bounded SELECT — no order rows are materialized (rules.md §10).
+     */
+    public function findReceivedOrderForProduct(User $user, int $productId): ?int
+    {
+        return Order::query()
+            ->where('user_id', $user->id)
+            ->where('status', 'delivered')
+            ->whereHas('items', fn ($query) => $query->where('product_id', $productId))
+            ->value('id');
+    }
+
+    /**
      * Admin listing — all orders, no user scoping.
      *
      * Supports optional filters: status, user_id, order_number (partial match).

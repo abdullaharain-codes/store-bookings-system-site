@@ -5,6 +5,7 @@ namespace App\Models;
 use Database\Factories\ServiceFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
  * A bookable IT service (e.g. "Laptop Screen Repair").
@@ -35,4 +36,12 @@ class Service extends Model
         'price_min' => 'decimal:2',
         'price_max' => 'decimal:2',
     ];
+
+    /**
+     * Service reviews — the public read path is published-only (ReviewService).
+     */
+    public function reviews(): HasMany
+    {
+        return $this->hasMany(Review::class);
+    }
 }

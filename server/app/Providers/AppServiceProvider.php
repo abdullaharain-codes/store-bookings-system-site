@@ -10,6 +10,10 @@ use App\Modules\Merchandising\Contracts\BannerRepositoryInterface;
 use App\Modules\Merchandising\Repositories\EloquentBannerRepository;
 use App\Modules\Orders\Contracts\AddressRepositoryInterface;
 use App\Modules\Orders\Repositories\EloquentAddressRepository;
+use App\Modules\Reviews\Contracts\ReviewRepositoryInterface;
+use App\Modules\Reviews\Repositories\EloquentReviewRepository;
+use App\Modules\ReviewShowcase\Contracts\ReviewShowcaseItemRepositoryInterface;
+use App\Modules\ReviewShowcase\Repositories\EloquentReviewShowcaseItemRepository;
 use App\Modules\Scheduling\Contracts\BusinessHourRepositoryInterface;
 use App\Modules\Scheduling\Contracts\HolidayRepositoryInterface;
 use App\Modules\Scheduling\Repositories\EloquentBusinessHourRepository;
@@ -43,6 +47,8 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(BusinessHourRepositoryInterface::class, EloquentBusinessHourRepository::class);
         $this->app->bind(HolidayRepositoryInterface::class, EloquentHolidayRepository::class);
         $this->app->bind(BannerRepositoryInterface::class, EloquentBannerRepository::class);
+        $this->app->bind(ReviewRepositoryInterface::class, EloquentReviewRepository::class);
+        $this->app->bind(ReviewShowcaseItemRepositoryInterface::class, EloquentReviewShowcaseItemRepository::class);
     }
 
     public function boot(): void

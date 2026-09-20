@@ -166,12 +166,13 @@ Distinct from, and never merged with, the database-backed Product/Service Review
 | 1–10 | (Wishlist, guest checkout, shipping fee, serviceable areas, booking file upload, notifications, min. booking notice, review eligibility, taxonomy ownership) | ✅ Resolved — see Section 10 and `00-PRODUCT-DEFINITION.md` |
 | 11 | Exact session/token strategy | Proposed default in `architecture.md` §5, flagged for confirmation |
 | 12 | Exact scope of "resume after login" state | Default: preserve **all** entered step data, not just current step — flagged for confirmation |
-| 13 | Review Showcase image limits (count, aspect ratio, file size cap) | Needed for upload validation — default proposed in `rules.md`, flagged for confirmation |
+| 13 | Review Showcase image limits (count, aspect ratio, file size cap) | ✅ Resolved (engineering default) — reuses existing Asset validation (jpg/jpeg/png/webp, 2MB, FileUploadService), max dimensions defaulted to 2000×2000 (product preset, not separately specified in SRS §3.4), no hard cap on item count (a frontend carousel-display concern, not backend). Flagged for eventual client confirmation, no urgency — consistent with this project's existing default-setting precedent. |
 | 14 | Category hierarchy | ✅ Resolved — **parent/child subcategories required in V1** (not deferred to future scope) |
 | 15 | Homepage Hero Banner count limit and recommended image dimensions | ✅ Resolved — defaults in `design.md`/`SRS.md` accepted |
 | 16 | Refund/return policy exact terms | ⚠️ **CLIENT_DECISION_REQUIRED** — content/legal, not an architecture blocker |
 | 17 | Admin panel URL pattern | ✅ Resolved — **admin.yoursite.com subdomain** |
 | 18 | Hostinger plan tier | ✅ Confirmed — SSH + Composer + PHP 8.3 available |
+| 19 | Review moderation workflow (customer-review auto-publish vs. review-before-publish) | ✅ Resolved — reviews auto-publish on submission (verified purchase/booking is the gate); admin can unpublish/republish any review afterward. Confirmed by client during Phase 10 planning. |
 
 ---
 

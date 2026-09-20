@@ -181,6 +181,24 @@ class BookingService
     }
 
     /**
+     * The COMPLETED booking of this service owned by the user, if any — the
+     * eligibility proof that grants a service review (ReleasePlan §12).
+     *
+     * Returns the booking id (recorded on the review as source_id) or null.
+     * Written here on the owning module's service so Reviews never queries
+     * service_bookings directly (architecture.md §3). A single value() SELECT
+     * — no booking rows are materialized (rules.md §10).
+     */
+    public function findCompletedBookingForService(User $user, int $serviceId): ?int
+    {
+        return ServiceBooking::query()
+            ->where('user_id', $user->id)
+            ->where('service_id', $serviceId)
+            ->where('status', 'completed')
+            ->value('id');
+    }
+
+    /**
      * Admin listing — ALL bookings, no ownership scoping (Phase 8 "Admin
      * Bookings (list + calendar)"). Mirrors OrderService::listAllForAdmin.
      *
