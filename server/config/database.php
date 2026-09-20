@@ -41,7 +41,18 @@ return [
             'busy_timeout' => null,
             'journal_mode' => null,
             'synchronous' => null,
-            'transaction_mode' => 'DEFERRED',
+            // SQLite has no row locks — lockForUpdate() compiles to '' (see
+            // SQLiteGrammar::compileLock). The transaction_mode below is the
+            // engine-level substitute, required for the critical-section
+            // pattern in SlotHoldService (the same overall double-booking
+            // mechanism as Phase 4's cart holds, applied to time-range
+            // overlap). 'IMMEDIATE' takes the whole-file write lock at BEGIN,
+            // BEFORE the overlap read inside the transaction — closing the
+            // read-skew window in which two DEFERRED transactions could both
+            // read "no overlap" and then both insert. On MySQL (production)
+            // DEFERRED + lockForUpdate() row locks are the equivalent section,
+            // so this setting is irrelevant there.
+            'transaction_mode' => env('DB_SQLITE_TRANSACTION_MODE', 'IMMEDIATE'),
         ],
 
         'mysql' => [

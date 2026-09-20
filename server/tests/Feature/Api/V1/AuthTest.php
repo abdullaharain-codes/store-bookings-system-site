@@ -2,12 +2,35 @@
 
 use App\Models\Role;
 use App\Models\User;
+use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Route;
 
 uses(RefreshDatabase::class);
 
 beforeEach(function () {
-    $this->withoutMiddleware(\Illuminate\Foundation\Http\Middleware\ValidateCsrfToken::class);
+    $this->withoutMiddleware(ValidateCsrfToken::class);
+
+    // These are SPA session-auth endpoints. statefulApi()'s
+    // EnsureFrontendRequestsAreStateful only starts the session for requests
+    // whose Origin/Referer is in SANCTUM_STATEFUL_DOMAINS. A real browser
+    // always sends Origin on cross-origin calls, so simulate that here —
+    // otherwise the session (and therefore AuthController's
+    // $request->session()->regenerate()/invalidate()) never initialises.
+    $this->withHeader('Origin', 'http://localhost:5173');
+    $this->withHeader('Referer', 'http://localhost:5173/');
+
+    // Stand-in for the removed /test/protected production route: keeps the
+    // auth:sanctum contract covered without shipping a test endpoint (same
+    // pattern as AdminMiddlewareTest).
+    // No 'spa' group exists anymore — session/CSRF is handled once by
+    // statefulApi() on the api group; actingAs() sets the guard directly.
+    Route::middleware(['auth:sanctum'])
+        ->get('/api/v1/test/protected', fn () => response()->json([
+            'message' => 'You are authenticated.',
+            'user' => auth()->user()->load('role'),
+        ]));
 });
 
 // ─── Registration ────────────────────────────────────────────────────────────
@@ -75,6 +98,27 @@ test('registration fails when password confirmation mismatches', function () {
 
     $response->assertStatus(422)
         ->assertJsonValidationErrors(['password']);
+});
+
+test('registration fails safely when the customer role is missing', function () {
+    Log::spy();
+
+    // Simulate a broken/seedless environment: no "customer" role exists.
+    Role::where('slug', 'customer')->delete();
+
+    $response = $this->postJson('/api/v1/auth/register', [
+        'name' => 'Orphan Check',
+        'email' => 'orphan@example.com',
+        'password' => 'password123',
+        'password_confirmation' => 'password123',
+    ]);
+
+    $response->assertStatus(500);
+
+    Log::shouldHaveReceived('critical')->once();
+
+    expect(User::count())->toBe(0);
+    $this->assertDatabaseMissing('users', ['email' => 'orphan@example.com']);
 });
 
 // ─── Login ───────────────────────────────────────────────────────────────────

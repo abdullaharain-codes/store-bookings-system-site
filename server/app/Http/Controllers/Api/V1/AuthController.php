@@ -10,6 +10,7 @@ use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
 
 class AuthController extends Controller
 {
@@ -17,11 +18,17 @@ class AuthController extends Controller
     {
         $customerRole = Role::where('slug', 'customer')->first();
 
+        if (! $customerRole) {
+            Log::critical('Registration blocked: the required "customer" role is missing from the roles table. Check the roles migration/seed data.');
+
+            abort(500, 'Registration is temporarily unavailable. Please try again later.');
+        }
+
         $user = User::create([
             'name' => $request->name,
             'email' => $request->email,
             'password' => $request->password,
-            'role_id' => $customerRole?->id,
+            'role_id' => $customerRole->id,
         ]);
 
         Auth::login($user);
@@ -36,7 +43,7 @@ class AuthController extends Controller
     {
         $credentials = $request->only('email', 'password');
 
-        if (!Auth::attempt($credentials)) {
+        if (! Auth::attempt($credentials)) {
             return response()->json([
                 'message' => 'Invalid credentials.',
             ], 401);

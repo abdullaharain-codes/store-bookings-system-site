@@ -1,14 +1,15 @@
 <?php
 
 use App\Shared\FileUploadService;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 
-uses(Illuminate\Foundation\Testing\RefreshDatabase::class);
+uses(RefreshDatabase::class);
 
 beforeEach(function () {
     Storage::fake('uploads');
-    $this->service = new FileUploadService();
+    $this->service = new FileUploadService;
 });
 
 test('store creates full image and thumbnail with correct dimensions', function () {

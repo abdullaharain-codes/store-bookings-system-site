@@ -2,15 +2,16 @@
 
 use App\Models\Role;
 use App\Models\User;
+use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Route;
 
 uses(RefreshDatabase::class);
 
 beforeEach(function () {
-    $this->withoutMiddleware(\Illuminate\Foundation\Http\Middleware\ValidateCsrfToken::class);
+    $this->withoutMiddleware(ValidateCsrfToken::class);
 
-    Route::middleware(['auth:sanctum', 'spa', 'admin'])
+    Route::middleware(['auth:sanctum', 'admin'])
         ->get('/test/admin-ping', fn () => response()->json(['ok' => true]));
 });
 

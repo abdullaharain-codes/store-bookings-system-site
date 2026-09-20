@@ -5,8 +5,9 @@ namespace App\Shared;
 use App\Models\Asset;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
-use Intervention\Image\ImageManager;
+use Illuminate\Support\Str;
 use Intervention\Image\Drivers\Gd\Driver;
+use Intervention\Image\ImageManager;
 
 class FileUploadService
 {
@@ -40,13 +41,14 @@ class FileUploadService
     ];
 
     private const THUMBNAIL_MAX_WIDTH = 400;
+
     private const THUMBNAIL_MAX_HEIGHT = 400;
 
     private ImageManager $imageManager;
 
     public function __construct()
     {
-        $this->imageManager = new ImageManager(new Driver());
+        $this->imageManager = new ImageManager(new Driver);
     }
 
     /**
@@ -63,7 +65,7 @@ class FileUploadService
         $this->validateFile($file, $category);
         $this->validateDimensions($file, $dimensionPreset);
 
-        $uuid = (string) \Illuminate\Support\Str::uuid();
+        $uuid = (string) Str::uuid();
         $extension = strtolower($file->getClientOriginalExtension());
 
         $fullFilename = "{$uuid}.{$extension}";
@@ -131,42 +133,42 @@ class FileUploadService
 
     private function validateCategory(string $category): void
     {
-        if (!in_array($category, self::VALID_CATEGORIES)) {
+        if (! in_array($category, self::VALID_CATEGORIES)) {
             throw new \InvalidArgumentException("Invalid upload category: {$category}");
         }
     }
 
     private function validateFile(UploadedFile $file, string $category): void
     {
-        if (!in_array($file->getMimeType(), self::ALLOWED_MIME_TYPES)) {
+        if (! in_array($file->getMimeType(), self::ALLOWED_MIME_TYPES)) {
             throw new \InvalidArgumentException(
-                "Invalid file type: {$file->getMimeType()}. Allowed: " . implode(', ', self::ALLOWED_MIME_TYPES)
+                "Invalid file type: {$file->getMimeType()}. Allowed: ".implode(', ', self::ALLOWED_MIME_TYPES)
             );
         }
 
         $extension = strtolower($file->getClientOriginalExtension());
-        if (!in_array($extension, self::ALLOWED_EXTENSIONS)) {
+        if (! in_array($extension, self::ALLOWED_EXTENSIONS)) {
             throw new \InvalidArgumentException(
-                "Invalid file extension: {$extension}. Allowed: " . implode(', ', self::ALLOWED_EXTENSIONS)
+                "Invalid file extension: {$extension}. Allowed: ".implode(', ', self::ALLOWED_EXTENSIONS)
             );
         }
 
         $maxSize = str_contains($category, 'banner') ? self::MAX_SIZES['banner'] : self::MAX_SIZES['default'];
         if ($file->getSize() > $maxSize) {
             throw new \InvalidArgumentException(
-                "File exceeds maximum size of " . round($maxSize / 1024 / 1024, 1) . " MB"
+                'File exceeds maximum size of '.round($maxSize / 1024 / 1024, 1).' MB'
             );
         }
     }
 
     private function validateDimensions(UploadedFile $file, ?string $preset): void
     {
-        if (!$preset || !isset(self::MAX_DIMENSIONS[$preset])) {
+        if (! $preset || ! isset(self::MAX_DIMENSIONS[$preset])) {
             return;
         }
 
         $dimensions = getimagesize($file->getRealPath());
-        if (!$dimensions) {
+        if (! $dimensions) {
             return;
         }
 

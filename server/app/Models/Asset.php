@@ -2,11 +2,16 @@
 
 namespace App\Models;
 
+use Database\Factories\AssetFactory;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Str;
 
 class Asset extends Model
 {
+    /** @use HasFactory<AssetFactory> */
+    use HasFactory;
+
     protected $fillable = [
         'uuid',
         'disk',
@@ -24,7 +29,7 @@ class Asset extends Model
     protected static function booted(): void
     {
         static::creating(function (Asset $asset) {
-            if (!$asset->uuid) {
+            if (! $asset->uuid) {
                 $asset->uuid = (string) Str::uuid();
             }
         });
@@ -39,7 +44,7 @@ class Asset extends Model
 
     public function getThumbnailUrlAttribute(): ?string
     {
-        if (!$this->thumbnail_path) {
+        if (! $this->thumbnail_path) {
             return null;
         }
 

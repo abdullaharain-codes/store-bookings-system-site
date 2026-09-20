@@ -25,7 +25,7 @@ Each phase below is only "complete" when it passes the Quality Gate at the botto
 - `BusinessSetting` module (generic settings store + typed read helpers).
 **Dependencies:** Phase 0 sign-off.
 **Testing:** unit tests for auth/session logic and ownership checks; integration test for a protected-route round trip (401 → login → resume).
-**Completion criteria:** a developer can register, log in, hit a protected endpoint and get correctly blocked/resumed; admin settings can be created/read via API.
+**Completion criteria:** a developer can register, log in, hit a protected endpoint and get correctly blocked/resumed; admin settings can be created/read via API. Admin users are provisioned via `php artisan admin:create` (resolves the previously flagged missing seeding path).
 
 ---
 
@@ -41,9 +41,12 @@ Each phase below is only "complete" when it passes the Quality Gate at the botto
 
 ---
 
-## Phase 3 — Product Catalog (Public)
+## Phase 3 — Product Catalog (Admin + Public)
 **Objective:** browsing experience.
-**Features:** category/brand listing pages (consuming Phase 2 data live, no hard-coding per `architecture.md` §6), product listing with filters/sort/pagination, search, product detail page, "Shop by Category" and "Shop by Brand" homepage sections rendering live logos.
+**Features:** Admin Product CRUD (name, slug, SKU, description, price, stock quantity, category assignment (many-to-many), brand assignment (single, optional), multiple product images with display order, publish/unpublish); category/brand listing pages (consuming Phase 2 data live, no hard-coding per `architecture.md` §6), product listing with filters/sort/pagination, search, product detail page, "Shop by Category" and "Shop by Brand" homepage sections rendering live logos.
+
+> **Note:** public browsing requires products to actually exist — without admin CRUD there would be nothing to browse. The original phase breakdown omitted this scope; admin CRUD and public read are therefore combined in this phase, matching the pattern already used in Phase 2 (Taxonomy: admin management + public read endpoints).
+
 **Dependencies:** Phase 2.
 **Testing:** integration test that a newly published category/brand appears in listings/filters without redeploy; responsive/accessibility pass on filter UI.
 **Completion criteria:** full guest browsing journey (PRD §5.1) works end-to-end.
@@ -53,6 +56,8 @@ Each phase below is only "complete" when it passes the Quality Gate at the botto
 ## Phase 4 — Cart, Wishlist & COD Checkout
 **Objective:** transactional buying flow, auth-gated.
 **Features:** Cart (guest-visible content, but add-to-cart requires auth per PRD §5.2 → triggers redirect-and-resume), Wishlist, Checkout (no guest checkout), Order creation, Order Confirmation.
+
+> **Note:** `Address` (listed in `architecture.md` §4 as a core entity) was missing from all prior phases. It is added here as a Phase 4 prerequisite — addresses are required for order placement and are managed as part of the checkout flow.
 **Dependencies:** Phase 3, Phase 1 auth.
 **Testing:** integration test of the full redirect-and-resume path specifically for "add to cart as guest → login → item is in cart"; stock/price-change edge cases at checkout.
 **Completion criteria:** a real order can be placed end-to-end with COD, correctly blocked/resumed for guests.
@@ -100,10 +105,12 @@ Each phase below is only "complete" when it passes the Quality Gate at the botto
 ---
 
 ## Phase 9 — Customer Account Area
+**Status:** ✅ Complete
 **Objective:** consolidate everything customer-facing into one dashboard.
 **Features:** Dashboard overview, Orders, Order Detail, Bookings, Booking Detail, Profile, Addresses, Wishlist view, Notifications.
 **Dependencies:** Phases 4, 5, 8.
 **Completion criteria:** all customer self-service journeys accessible from one place, mobile responsive.
+Notifications tab deferred until Phase 11 (Notifications backend) exists — documented decision, not an oversight. Orders/Bookings/Addresses/Wishlist views reuse existing Phase 4/5/8 endpoints, already ownership-scoped and tested; no new backend work was needed for them.
 
 ---
 
@@ -127,6 +134,7 @@ Each phase below is only "complete" when it passes the Quality Gate at the botto
 **Objective:** security review, performance pass, accessibility audit, SEO, full responsive QA across every phase's screens — including both carousels, all admin CRUD screens, and the full booking/checkout flows.
 **Dependencies:** all feature phases complete.
 **Completion criteria:** production-readiness checklist (per original brief) fully green.
+**Hardening follow-up (noted from Sanctum fix):** a login attempt from a non-whitelisted origin currently returns 500 "Session store not set" instead of 401; harden to return a clean 401 for Phase 12.
 
 ---
 
