@@ -1,0 +1,30 @@
+# SRS 3.7 - deny server-side script execution inside the uploads tree while
+# still serving static assets (images etc.) unchanged.
+#
+# Scope: this directory and all subdirectories (Apache recurses .htaccess
+# from the request path up to the root, so an uploads/<subdir>/file sits
+# under this rule). Only the script extensions below are denied; static
+# asset types (.jpg/.jpeg/.png/.webp/.svg/.avif/.gif/...) are never matched,
+# so the storefront's uploaded images keep serving as pure file passthrough.
+
+# Apache 2.4+ (mod_authz_core) - Hostinger runs Apache 2.4:
+<IfModule mod_authz_core.c>
+    <FilesMatch "\.(php|phtml|phar|php[0-9])$">
+        Require all denied
+    </FilesMatch>
+</IfModule>
+
+# Apache 2.2 fallback (mod_access_compat) - kept for older configs:
+<IfModule !mod_authz_core.c>
+    <FilesMatch "\.(php|phtml|phar|php[0-9])$">
+        Order allow,deny
+        Deny from all
+    </FilesMatch>
+</IfModule>
+
+# Defense in depth: strip any PHP handler from these extensions even where
+# the web server is tricked into treating them as scripts (mod_php/php-fpm).
+<FilesMatch "\.(php|phtml|phar|php[0-9])$">
+    SetHandler None
+    RemoveHandler .php .phtml .phar
+</FilesMatch>

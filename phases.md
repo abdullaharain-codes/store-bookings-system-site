@@ -127,9 +127,12 @@ Reviews (Step 10.1) and Review Showcase (Step 10.2) verified as architecturally 
 ---
 
 ## Phase 11 — Notifications
+**Status:** ✅ Complete
 **Objective:** website + email notifications for order/booking status changes.
 **Dependencies:** Phases 5, 8.
 **Completion criteria:** status-change events reliably trigger the correct notification channel(s).
+
+This also delivers Phase 9's deferred item: the customer account area's Notifications tab (deferred in Phase 9) is now backend-ready — `GET /notifications`, `POST /notifications/{id}/read`, `POST /notifications/read-all`.
 
 ---
 
@@ -137,9 +140,24 @@ Reviews (Step 10.1) and Review Showcase (Step 10.2) verified as architecturally 
 **Objective:** security review, performance pass, accessibility audit, SEO, full responsive QA across every phase's screens — including both carousels, all admin CRUD screens, and the full booking/checkout flows.
 **Dependencies:** all feature phases complete.
 **Completion criteria:** production-readiness checklist (per original brief) fully green.
-**Hardening follow-up (noted from Sanctum fix):** a login attempt from a non-whitelisted origin currently returns 500 "Session store not set" instead of 401; harden to return a clean 401 for Phase 12.
-**Hardening follow-up (noted from Review duplicate race):** ReviewService::submitReview()'s duplicate check (assertNotDuplicate) is a service-layer check backed by a DB unique constraint, but a genuine race (two simultaneous submit requests for the same user+target) would surface as a raw 500 QueryException, not a clean 422 — low priority (single-user double-submit is an unlikely race, unlike booking slots), but worth a database-exception-to-422 mapping in Phase 12.
-**Hardening follow-up (noted from Reviews/Showcase query counts):** Reviews/ReviewShowcase list endpoints don't have an explicit expectsDatabaseQueryCount assertion (unlike DashboardApiTest) — eager-loading looks correct (with('user:id,name')) but the N+1-safety claim isn't test-proven the same rigorous way. Add query-count assertions in Phase 12 for consistency.
+
+**Hardening checklist** (self-contained — no dependency on external status reports; resolved items stay visible so the phase-by-phase history is intact, matching how Phases 9/10 keep their resolved-decision notes):
+
+1. **Sanctum non-whitelisted-origin 500 → 401 (noted from Sanctum fix):** a login attempt from a non-whitelisted origin currently returns 500 "Session store not set" instead of 401; harden to return a clean 401 for Phase 12.
+2. **Review duplicate-race → 422 mapping (noted from Review duplicate race):** ReviewService::submitReview()'s duplicate check (assertNotDuplicate) is a service-layer check backed by a DB unique constraint, but a genuine race (two simultaneous submit requests for the same user+target) would surface as a raw 500 QueryException, not a clean 422 — low priority (single-user double-submit is an unlikely race, unlike booking slots), but worth a database-exception-to-422 mapping in Phase 12.
+3. **Reviews/Showcase missing query-count assertions (noted from Reviews/Showcase query counts):** Reviews/ReviewShowcase list endpoints don't have an explicit expectsDatabaseQueryCount assertion (unlike DashboardApiTest) — eager-loading looks correct (with('user:id,name')) but the N+1-safety claim isn't test-proven the same rigorous way. Add query-count assertions in Phase 12 for consistency.
+4. **Generic Asset upload endpoint** — ✅ Resolved in Phase 11 (POST `/api/v1/admin/assets`, admin-only, delegates to FileUploadService).
+5. **BusinessSetting admin API** — ✅ Resolved in Phase 11 (GET/GET-by-key/PATCH under `/admin/settings`, type-validated, audit-logged).
+6. **Rate limiting on auth/review-submission/password-change** — ✅ Resolved in Phase 11 (named limiters: login email+IP compound, register IP, password-change per-user, review-submission per-user).
+7. **storage/uploads/.htaccess execution-deny** — ✅ Resolved in Phase 11 (SRS §3.7).
+8. **FileUploadService dimension-limit enforcement (was preset-optional, silently skippable)** — ✅ Resolved in Phase 11 (now category-derived, mandatory, SRS §3.4).
+9. **shipping_fee stored as string not decimal** — orders store shipping_fee as a string rather than a locale-safe decimal; normalize the column/casting and re-audit all comparisons for correctness.
+10. **Public listing endpoints have no per_page cap** — list endpoints accept unbounded per_page without an upper bound; introduce a documented cap.
+11. **SlotGenerationService::nearestAvailableSlot() N+1** — the nearest-slot suggestion issues queries per candidate day; collapse to a bounded query set.
+12. **HomepageBanner/ReviewShowcase reorder() partial-ID-list stale display_order** — reordering with a partial ID list leaves unlisted rows at stale display_order values; reconcile ordering for partial lists.
+13. **Production MySQL transaction_isolation should be confirmed REPEATABLE READ** — the booking-slot concurrency guarantees assume REPEATABLE READ; verify Hostinger MySQL's default before go-live.
+14. **No cross-device session invalidation after password change** — a password change does not invalidate sessions/tokens on other devices; add invalidation for Phase 12.
+15. **AdminAssetController uses inline `$request->validate()` instead of a dedicated FormRequest** — unlike every other admin controller in this codebase, a deliberate scope-limited deviation from the Task upload-endpoint; align it with the FormRequest pattern for consistency.
 
 ---
 

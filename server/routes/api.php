@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\V1\AddressController;
+use App\Http\Controllers\Api\V1\Admin\AssetController as AdminAssetController;
 use App\Http\Controllers\Api\V1\Admin\BannerController as AdminBannerController;
 use App\Http\Controllers\Api\V1\Admin\BookingController as AdminBookingController;
 use App\Http\Controllers\Api\V1\Admin\BrandController as AdminBrandController;
@@ -10,6 +11,7 @@ use App\Http\Controllers\Api\V1\Admin\ProductController as AdminProductControlle
 use App\Http\Controllers\Api\V1\Admin\ReviewController as AdminReviewController;
 use App\Http\Controllers\Api\V1\Admin\ReviewShowcaseController as AdminReviewShowcaseController;
 use App\Http\Controllers\Api\V1\Admin\ServiceController as AdminServiceController;
+use App\Http\Controllers\Api\V1\Admin\SettingController as AdminSettingController;
 use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\BannerController as PublicBannerController;
 use App\Http\Controllers\Api\V1\BookingController;
@@ -17,6 +19,7 @@ use App\Http\Controllers\Api\V1\BrandController as PublicBrandController;
 use App\Http\Controllers\Api\V1\CartController;
 use App\Http\Controllers\Api\V1\CategoryController as PublicCategoryController;
 use App\Http\Controllers\Api\V1\DashboardController;
+use App\Http\Controllers\Api\V1\NotificationController;
 use App\Http\Controllers\Api\V1\OrderController;
 use App\Http\Controllers\Api\V1\ProductController as PublicProductController;
 use App\Http\Controllers\Api\V1\ProfileController;
@@ -24,6 +27,7 @@ use App\Http\Controllers\Api\V1\ReviewController as PublicReviewController;
 use App\Http\Controllers\Api\V1\ReviewShowcaseController as PublicReviewShowcaseController;
 use App\Http\Controllers\Api\V1\ServiceController as PublicServiceController;
 use App\Http\Controllers\Api\V1\WishlistController;
+use App\Models\BusinessSetting;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1')->group(function () {
@@ -67,11 +71,13 @@ Route::prefix('v1')->group(function () {
 
     // Auth (session-based Sanctum SPA auth — session handled once by
     // statefulApi()'s EnsureFrontendRequestsAreStateful on the api group)
+    // Named limiters per rules.md §9 / hardening item #8: login keyed
+    // email+IP (compound), register keyed IP.
     Route::prefix('auth')->group(function () {
         Route::post('/register', [AuthController::class, 'register'])
-            ->middleware('throttle:auth');
+            ->middleware('throttle:register');
         Route::post('/login', [AuthController::class, 'login'])
-            ->middleware('throttle:auth');
+            ->middleware('throttle:login');
         Route::post('/logout', [AuthController::class, 'logout'])
             ->middleware('auth:sanctum');
         Route::get('/user', [AuthController::class, 'user'])
@@ -120,9 +126,11 @@ Route::prefix('v1')->group(function () {
         // ── Profile (PRD §5.2 customer self-service) ──────────────────────
         // Protected, no admin gate, no {id} in the URL — the authenticated
         // user always acts on their own record, so there is no ownership gap.
+        // password change is throttle-limited per user (rules.md §9).
         Route::get('/profile', [ProfileController::class, 'show']);
         Route::match(['put', 'patch'], '/profile', [ProfileController::class, 'update']);
-        Route::post('/profile/password', [ProfileController::class, 'changePassword']);
+        Route::post('/profile/password', [ProfileController::class, 'changePassword'])
+            ->middleware('throttle:password-change');
 
         // ── Dashboard (PRD §5.2 account overview) ─────────────────────────
         // Read-only aggregation of the authenticated customer's OWN data
@@ -136,7 +144,18 @@ Route::prefix('v1')->group(function () {
         // Customer submission of a product/service review. Eligibility (a
         // delivered order for products, a completed booking for services) is
         // verified in ReviewService — the client never proves anything.
-        Route::post('/reviews', [PublicReviewController::class, 'store']);
+        // Submission is throttle-limited per user (rules.md §9 spam guard).
+        Route::post('/reviews', [PublicReviewController::class, 'store'])
+            ->middleware('throttle:review-submission');
+
+        // ── Notifications (Step 11.1 — read/mark infrastructure) ─────────
+        // The authenticated user's OWN notifications only. The list has no
+        // {id}; the mark-read {notification} id is scoped inside
+        // NotificationService so a foreign notification 404s identically to
+        // a missing one (architecture.md §10).
+        Route::get('/notifications', [NotificationController::class, 'index']);
+        Route::post('/notifications/{notification}/read', [NotificationController::class, 'markRead']);
+        Route::post('/notifications/read-all', [NotificationController::class, 'markAllRead']);
     });
 
     // ── Admin routes (require auth + admin role) ────────────────────────
@@ -211,5 +230,30 @@ Route::prefix('v1')->group(function () {
             Route::get('/reviews', [AdminReviewController::class, 'index']);
             Route::post('/reviews/{review}/publish', [AdminReviewController::class, 'publish']);
             Route::post('/reviews/{review}/unpublish', [AdminReviewController::class, 'unpublish']);
+
+            // ── Business Settings (architecture.md §4.1) ──────────────────
+            // Generic key/value/type table read via BusinessSetting::getValue().
+            // The {setting} closure binding resolves the unique key string to
+            // the row; an unknown key fails binding and the global handler
+            // normalises it to the same {"message":"Not Found"} 404 as every
+            // other miss. The update FormRequest builds its value rules from
+            // the row's stored 'type', so a boolean setting rejects any
+            // non-boolean payload (never silently coerced).
+            Route::bind('setting', function (string $value) {
+                return BusinessSetting::where('key', $value)->firstOrFail();
+            });
+            Route::get('/settings', [AdminSettingController::class, 'index']);
+            Route::get('/settings/{setting}', [AdminSettingController::class, 'show']);
+            Route::patch('/settings/{setting}', [AdminSettingController::class, 'update']);
+
+            // ── Assets (Phase 12 hardening item #10) ─────────────────────────
+            // Generic image upload. The returned Asset id is what the taxonomy/
+            // merch admin CRUD forms submit as *_asset_id — an upload endpoint
+            // missing until now, so asset_id fields could never be populated.
+            // File/size/MIME validation stays in FileUploadService (never
+            // duplicated here); its InvalidArgumentException becomes the standard
+            // {"message": ...} 422. Admin-only: the whole /admin group is guarded
+            // by auth:sanctum + admin (rules.md §5).
+            Route::post('/assets', [AdminAssetController::class, 'store']);
         });
 });

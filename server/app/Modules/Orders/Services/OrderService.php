@@ -8,6 +8,7 @@ use App\Models\Order;
 use App\Models\Product;
 use App\Models\User;
 use App\Modules\Catalog\Contracts\CartRepositoryInterface;
+use App\Modules\Notifications\Services\NotificationService;
 use App\Modules\Orders\Contracts\AddressRepositoryInterface;
 use App\Modules\Orders\Exceptions\OrderValidationException;
 use App\Shared\AuditLogger;
@@ -34,6 +35,7 @@ class OrderService
         private readonly CartRepositoryInterface $cartRepo,
         private readonly AddressRepositoryInterface $addressRepo,
         private readonly AuditLogger $auditLogger,
+        private readonly NotificationService $notificationService,
     ) {}
 
     /**
@@ -362,18 +364,29 @@ class OrderService
 
         $previousStatus = $order->status;
 
-        $updates = ['status' => $newStatus];
+        $order = DB::transaction(function () use ($order, $newStatus, $previousStatus) {
+            $updates = ['status' => $newStatus];
 
-        if ($newStatus === 'delivered') {
-            $updates['payment_status'] = 'paid';
-        }
+            if ($newStatus === 'delivered') {
+                $updates['payment_status'] = 'paid';
+            }
 
-        $order->update($updates);
+            $order->update($updates);
 
-        $this->auditLogger->log('Order', $order->id, 'status_changed', [
-            'from' => $previousStatus,
-            'to' => $newStatus,
-        ]);
+            $this->auditLogger->log('Order', $order->id, 'status_changed', [
+                'from' => $previousStatus,
+                'to' => $newStatus,
+            ]);
+
+            return $order;
+        });
+
+        // Notify AFTER the transaction commits — the Task 11.0 boundary is
+        // deliberately NOT widened to include the notification (rules.md §3
+        // SRP: OrderService coordinates, it does not own delivery logic).
+        // NotificationService swallows its own failures, so a failed send can
+        // never roll back or fail the transition (SRS §6.4).
+        $this->notificationService->notifyOrderStatusChanged($order, $previousStatus);
 
         return $order;
     }

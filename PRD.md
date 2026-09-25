@@ -173,6 +173,7 @@ Distinct from, and never merged with, the database-backed Product/Service Review
 | 17 | Admin panel URL pattern | ✅ Resolved — **admin.yoursite.com subdomain** |
 | 18 | Hostinger plan tier | ✅ Confirmed — SSH + Composer + PHP 8.3 available |
 | 19 | Review moderation workflow (customer-review auto-publish vs. review-before-publish) | ✅ Resolved — reviews auto-publish on submission (verified purchase/booking is the gate); admin can unpublish/republish any review afterward. Confirmed by client during Phase 10 planning. |
+| 20 | Notification preference model: website notifications always recorded (not user-toggleable); email sending gated by a single global BusinessSetting `email_notifications_enabled` (default true), admin-wide not per-customer — confirmed by client. | ✅ Resolved — confirmed by client during Phase 11 planning. |
 
 ---
 

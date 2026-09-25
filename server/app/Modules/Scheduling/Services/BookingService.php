@@ -7,6 +7,7 @@ use App\Models\BusinessSetting;
 use App\Models\Service;
 use App\Models\ServiceBooking;
 use App\Models\User;
+use App\Modules\Notifications\Services\NotificationService;
 use App\Modules\Scheduling\Exceptions\SchedulingValidationException;
 use App\Shared\AuditLogger;
 use App\Shared\Exceptions\ResourceNotFoundException;
@@ -28,6 +29,7 @@ class BookingService
     public function __construct(
         private readonly SlotHoldService $slotHold,
         private readonly AuditLogger $auditLogger,
+        private readonly NotificationService $notificationService,
     ) {}
 
     /**
@@ -314,12 +316,22 @@ class BookingService
 
         $previousStatus = $booking->status;
 
-        $booking->update(['status' => $newStatus]);
+        $booking = DB::transaction(function () use ($booking, $newStatus, $previousStatus) {
+            $booking->update(['status' => $newStatus]);
 
-        $this->auditLogger->log('ServiceBooking', $booking->id, 'status_changed', [
-            'from' => $previousStatus,
-            'to' => $newStatus,
-        ]);
+            $this->auditLogger->log('ServiceBooking', $booking->id, 'status_changed', [
+                'from' => $previousStatus,
+                'to' => $newStatus,
+            ]);
+
+            return $booking;
+        });
+
+        // Notify AFTER the transaction commits — the Task 11.0 boundary is
+        // deliberately NOT widened to include the notification (rules.md §3
+        // SRP). NotificationService swallows its own failures, so a failed
+        // send can never roll back or fail the transition (SRS §6.4).
+        $this->notificationService->notifyBookingStatusChanged($booking, $previousStatus);
 
         return $booking;
     }
@@ -347,13 +359,24 @@ class BookingService
             );
         }
 
-        $formatted = number_format($finalPrice, 2, '.', '');
+        $booking = DB::transaction(function () use ($booking, $finalPrice) {
+            $formatted = number_format($finalPrice, 2, '.', '');
 
-        $booking->update(['status' => 'completed', 'final_price' => $formatted]);
+            $booking->update(['status' => 'completed', 'final_price' => $formatted]);
 
-        $this->auditLogger->log('ServiceBooking', $booking->id, 'final_price_entered', [
-            'final_price' => $formatted,
-        ]);
+            $this->auditLogger->log('ServiceBooking', $booking->id, 'final_price_entered', [
+                'final_price' => $formatted,
+            ]);
+
+            return $booking;
+        });
+
+        // Notify AFTER the commit, and ONLY the final-price notification —
+        // entering the price IS the completion action (PRD §10), so firing a
+        // status-change notification too would double-notify the customer for
+        // one business action. Failure is swallowed inside NotificationService
+        // (SRS §6.4), so it can never fail the committed completion.
+        $this->notificationService->notifyBookingFinalPriceEntered($booking);
 
         return $booking;
     }
@@ -438,12 +461,24 @@ class BookingService
 
         $previousStatus = $booking->status;
 
-        $booking->update(['status' => 'cancelled', 'cancelled_at' => now()]);
+        // The mutation (update + audit) runs atomically — the exact Task 11.0
+        // pattern from transitionStatus() and enterFinalPrice(). All guards
+        // above (ownership, terminal states, the 2-hour cutoff) stay OUTSIDE
+        // the transaction: they validate, they do not write.
+        $booking = DB::transaction(function () use ($booking, $previousStatus, $isAdmin) {
+            $booking->update(['status' => 'cancelled', 'cancelled_at' => now()]);
 
-        $this->auditLogger->log('ServiceBooking', $booking->id, 'cancelled', [
-            'previous_status' => $previousStatus,
-            'cancelled_by' => $isAdmin ? 'admin' : 'customer',
-        ]);
+            $this->auditLogger->log('ServiceBooking', $booking->id, 'cancelled', [
+                'previous_status' => $previousStatus,
+                'cancelled_by' => $isAdmin ? 'admin' : 'customer',
+            ]);
+
+            return $booking;
+        });
+
+        // Notify AFTER the commit, reusing the Step 11.3 class/method — same
+        // boundary + swallow pattern as the other transitions (SRS §6.4).
+        $this->notificationService->notifyBookingStatusChanged($booking, $previousStatus);
 
         return $booking;
     }

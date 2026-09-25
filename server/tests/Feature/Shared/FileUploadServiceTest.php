@@ -84,3 +84,44 @@ test('asset model exposes thumbnail url accessor', function () {
     expect($asset->thumbnail_url)->toContain($asset->thumbnail_path);
     expect($asset->thumbnail_url)->toContain('/storage/uploads/');
 });
+
+// ─── SRS §3.4 dimension limits, derived from category ─────────────────────────
+
+test('a category accepts an image exactly at its maximum dimensions', function (string $category, int $width, int $height) {
+    $file = UploadedFile::fake()->image('at-limit.jpg', $width, $height, 'jpg');
+
+    $asset = $this->service->store($file, $category);
+
+    expect($asset->path)->not->toBeNull()
+        ->and($asset->width)->toBe($width)
+        ->and($asset->height)->toBe($height);
+    Storage::disk('uploads')->assertExists($asset->path);
+})->with([
+    'brands (logo 1024x1024)' => ['brands', 1024, 1024],
+    'categories (logo 1024x1024)' => ['categories', 1024, 1024],
+    'categories/banners (banner 2400x1200)' => ['categories/banners', 2400, 1200],
+    'homepage (banner 2400x1200)' => ['homepage', 2400, 1200],
+    'products (product 2000x2000)' => ['products', 2000, 2000],
+    'review-showcase (product 2000x2000)' => ['review-showcase', 2000, 2000],
+    'booking-attachments (product 2000x2000)' => ['booking-attachments', 2000, 2000],
+]);
+
+test('a category rejects an image one pixel over either max dimension, never silently resizing', function (string $category, int $width, int $height) {
+    $file = UploadedFile::fake()->image('over-limit.jpg', $width, $height, 'jpg');
+
+    expect(fn () => $this->service->store($file, $category))
+        ->toThrow(InvalidArgumentException::class, 'exceed maximum');
+
+    $this->assertDatabaseCount('assets', 0);
+})->with([
+    'brands width +1' => ['brands', 1025, 1024],
+    'brands height +1' => ['brands', 1024, 1025],
+    'categories width +1' => ['categories', 1025, 1024],
+    'categories/banners width +1' => ['categories/banners', 2401, 1200],
+    'categories/banners height +1' => ['categories/banners', 2400, 1201],
+    'homepage width +1' => ['homepage', 2401, 1200],
+    'products width +1' => ['products', 2001, 2000],
+    'products height +1' => ['products', 2000, 2001],
+    'review-showcase width +1' => ['review-showcase', 2001, 2000],
+    'booking-attachments width +1' => ['booking-attachments', 2001, 2000],
+]);

@@ -13,3 +13,6 @@ Artisan::command('inspire', function () {
 // CORRECT even if this cron never fires — availableStock() filters out
 // expired holds at query time. This just keeps the table tidy.
 Schedule::command(ReleaseExpiredStockHolds::class)->everyMinute();
+
+// Database queue driver + cron-only Hostinger hosting (no persistent worker): drain pending jobs every minute.
+Schedule::command('queue:work --stop-when-empty')->everyMinute()->withoutOverlapping();

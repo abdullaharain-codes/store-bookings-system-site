@@ -40,6 +40,23 @@ class FileUploadService
         'booking-attachments',
     ];
 
+    /**
+     * SRS §3.4 dimension limits, derived from the upload category so every
+     * upload gets its correct limit without any caller having to opt in.
+     * review-showcase and booking-attachments use the product preset — the
+     * only type SRS §3.4 doesn't separately specify, defaulted to 2000×2000
+     * per PRD item #13 (engineering default, already established).
+     */
+    private const DIMENSION_PRESETS_BY_CATEGORY = [
+        'brands' => 'logo',
+        'categories' => 'logo',
+        'categories/banners' => 'banner',
+        'homepage' => 'banner',
+        'products' => 'product',
+        'review-showcase' => 'product',
+        'booking-attachments' => 'product',
+    ];
+
     private const THUMBNAIL_MAX_WIDTH = 400;
 
     private const THUMBNAIL_MAX_HEIGHT = 400;
@@ -53,17 +70,21 @@ class FileUploadService
 
     /**
      * Store an uploaded file with a thumbnail variant and create an Asset record.
+     *
+     * Dimension limits are derived automatically from the $category (SRS §3.4 —
+     * see DIMENSION_PRESETS_BY_CATEGORY), never caller-supplied, so no upload
+     * path can skip them. An oversized image is REJECTED with a clear error,
+     * never silently resized.
      */
     public function store(
         UploadedFile $file,
         string $category,
         ?int $uploadedBy = null,
         ?string $altText = null,
-        ?string $dimensionPreset = null,
     ): Asset {
         $this->validateCategory($category);
         $this->validateFile($file, $category);
-        $this->validateDimensions($file, $dimensionPreset);
+        $this->validateDimensions($file, $category);
 
         $uuid = (string) Str::uuid();
         $extension = strtolower($file->getClientOriginalExtension());
@@ -161,8 +182,10 @@ class FileUploadService
         }
     }
 
-    private function validateDimensions(UploadedFile $file, ?string $preset): void
+    private function validateDimensions(UploadedFile $file, string $category): void
     {
+        $preset = self::DIMENSION_PRESETS_BY_CATEGORY[$category] ?? null;
+
         if (! $preset || ! isset(self::MAX_DIMENSIONS[$preset])) {
             return;
         }

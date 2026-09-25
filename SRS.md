@@ -37,7 +37,8 @@ Developers (human or AI-assisted, e.g., Claude Code) implementing the system; th
 | Django (Python) + PostgreSQL | Good framework, but Hostinger's shared/entry hosting is not Python-first (needs Passenger/WSGI config, less turnkey than PHP there); no material advantage over Laravel for this project's needs. | Not selected |
 
 **Final Decision:**
-- **Backend:** Laravel 11 (PHP 8.3), REST API (`/api/v1`), Sanctum for token-based auth (fits the `architecture.md` §5 access-token model), Eloquent ORM.
+- **Backend:** Laravel (runtime 13.25.0; composer constraint `laravel/framework` `^13.17`), PHP (runtime 8.5.9; composer constraint `php` `^8.3`), REST API (`/api/v1`), Sanctum for token-based auth (fits the `architecture.md` §5 access-token model), Eloquent ORM.
+  - **Deployment note:** the composer `php` `^8.3` constraint is the deployment-compatibility floor, but the dev machine runs PHP 8.5.9 and the codebase is only verified against that runtime so far. Before go-live (Phase 13 concern — flag only) either pin Hostinger's PHP to the tested version (8.5.9) or re-verify the full suite on the pinned production version.
 - **Database:** MySQL 8 (Hostinger's default/most supported DB engine).
 - **Frontend (Storefront + Admin):** React 18 + Vite, built as **static SPA bundles** — no Node server needed in production, the built `dist/` output is just static files served by Hostinger, which is the simplest and most reliable pattern on shared/budget hosting. Two separate Vite apps per `architecture.md` §2 (`/apps/storefront`, `/apps/admin`), sharing a `/packages/ui` component library.
 - **State/data-fetching:** TanStack Query (server-state cache) + Zustand (small global client state — auth session, cart badge, pending-action object) per `architecture.md` §9.
