@@ -1,9 +1,9 @@
-import { forwardRef, type ReactNode } from "react";
-import { clsx } from "clsx";
+import { forwardRef } from "react";
 import type { Product } from "@ecommerce/api-client";
 import { Badge } from "../Badge";
 import { Button } from "../Button";
 import { Card } from "../Card";
+import { ClickableArea } from "../ClickableArea";
 import { LoadingSkeleton } from "../LoadingSkeleton";
 import { formatPrice } from "../../utils/format-price";
 
@@ -92,33 +92,14 @@ export const ProductCard = forwardRef<HTMLDivElement, ProductCardProps>(
     const showRating = averageRating !== undefined;
     const roundedRating = Math.round(averageRating ?? 0);
 
-    const nav = (children: ReactNode) =>
-      onViewDetails ? (
-        <a
-          href="#"
-          onClick={(event) => {
-            event.preventDefault();
-            onViewDetails();
-          }}
-          className={clsx(
-            "block cursor-pointer rounded-[var(--radius-sm)]",
-            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-accent)] focus-visible:ring-offset-2"
-          )}
-        >
-          {children}
-        </a>
-      ) : (
-        <div className="block">{children}</div>
-      );
-
     return (
       <Card
         ref={ref}
         className="flex flex-col gap-[var(--space-3)]"
       >
         <div className="relative">
-          {nav(
-            image ? (
+          <ClickableArea onActivate={onViewDetails}>
+            {image ? (
               <img
                 src={image.path}
                 alt={product.name}
@@ -129,8 +110,8 @@ export const ProductCard = forwardRef<HTMLDivElement, ProductCardProps>(
                 aria-hidden="true"
                 className="h-40 w-full rounded-[var(--radius-sm)] bg-[var(--color-surface-muted)]"
               />
-            )
-          )}
+            )}
+          </ClickableArea>
           <Button
             type="button"
             variant="tertiary"
@@ -145,7 +126,7 @@ export const ProductCard = forwardRef<HTMLDivElement, ProductCardProps>(
           </Button>
         </div>
 
-        {nav(
+        <ClickableArea onActivate={onViewDetails}>
           <div className="flex flex-col gap-[var(--space-1)]">
             {product.brand?.name && (
               <span className="text-xs text-[var(--color-text-secondary)]">
@@ -156,7 +137,7 @@ export const ProductCard = forwardRef<HTMLDivElement, ProductCardProps>(
               {product.name}
             </h3>
           </div>
-        )}
+        </ClickableArea>
 
         <div className="flex flex-wrap items-center gap-[var(--space-2)]">
           <span className="text-base font-semibold text-[var(--color-text-primary)]">

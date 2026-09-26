@@ -8,4 +8,6 @@ export { EmptyState } from "./components/EmptyState";
 export { LoadingSkeleton } from "./components/LoadingSkeleton";
 export { ErrorState } from "./components/ErrorState";
 export { ProductCard } from "./components/ProductCard";
+export { ServiceCard } from "./components/ServiceCard";
+export { ClickableArea } from "./components/ClickableArea";
 export { formatPrice } from "./utils/format-price";
