@@ -10,46 +10,55 @@ A trustworthy, technical, premium Pakistani tech retailer where "Shop" and "Book
 
 ## 2. Foundations & Design Tokens
 
+> **TOKENS RECONCILED (2026-09-26):** the original restrained token set below was an early abstraction that was never cross-checked against the actual `design-reference/` prototype screens (40 screens, discovered/audited later in this project). Following a retroactive audit, colors/fonts/radius/shadows have been reconciled to match design-reference (see `packages/ui/src/styles/tokens.css` for current values) — WCAG AA contrast was re-verified for every new pairing before adoption. The tables below are updated in place to reflect current values; historical rationale for the original restrained approach is preserved in comments where it still applies (e.g. "no more than two shadow levels" remains a valid rule even though the shadow's exact rgba changed).
+
 ### 2.1 Typography
 ```
-font.family.primary = Inter, system-ui, sans-serif
-font.size.xs   = 12px   font.size.sm  = 13px   font.size.md = 14px
-font.size.lg   = 16px   font.size.xl  = 18px   font.size.2xl = 22px
-font.size.3xl  = 28px   font.size.4xl = 34px
-font.weight.regular = 400   font.weight.medium = 500   font.weight.bold = 700
+font.family.primary  = Inter, system-ui, sans-serif     (body, labels)
+font.family.display  = Sora, Inter, system-ui, sans-serif  (headings, price-display)
+font.size.xs   = 12px   font.size.sm  = 14px   font.size.md = 16px
+font.size.lg   = 18px   font.size.xl  = 20px   font.size.2xl = 24px
+font.size.3xl  = 32px   font.size.4xl = 48px
+font.weight.regular = 400   font.weight.medium = 500   font.weight.semibold = 600   font.weight.bold = 700
 font.lineHeight.base = 1.5
+price-display: Sora 20px/24px bold 700   (product/service prices)
+label-caps:    Inter 12px/16px semibold 600, letter-spacing 0.05em, uppercase   (eyebrows, badges, micro labels)
 ```
-One family, one scale, reused across storefront and admin — per `rules.md` §4, no page-specific fonts.
+Two families, one scale, shared across storefront and admin — per `rules.md` §4, no per-page fonts. Sora is used for display/headlines/price only; Inter for everything else.
 
 ### 2.2 Color (semantic tokens — WCAG 2.2 AA verified pairings only)
 ```
-color.text.primary      = #0F172A   (on light surfaces)
-color.text.secondary    = #475569
+color.text.primary      = #131B2E   (on light surfaces)
+color.text.secondary    = #42474F   (on-surface-variant — readable on white AND tinted surfaces, ≥8:1)
+color.text.muted        = #64748B   (text-muted — microcopy on white only, 4.76:1; do NOT use on tinted surfaces, drops to ~4.1:1)
 color.text.inverse      = #F8FAFC   (on dark surfaces)
 color.surface.base      = #FFFFFF
-color.surface.muted     = #F1F5F9
+color.surface.muted     = #EAEDFF   (surface-container — blue-tinted, hover/placeholder/icon-tile bg)
 color.surface.dark      = #0B1E36   (trust/technology anchor — header, footer, hero backdrop)
-color.brand.accent      = #1D6FD6   (single primary-CTA accent — "Shop Now" / "Book Service")
+color.brand.accent      = #00355F   (canonical primary — nav, headings, prices, primary buttons; 12.55:1 with white)
+color.accent.cta        = #C2410C   (high-intent CTA — "Book Service" orange; 5.18:1 with white)
 color.status.success    = #16A34A
-color.status.warning    = #D97706
+color.status.warning    = #B45309
 color.status.error      = #DC2626
 color.status.info       = #2563EB
 color.border.default    = #E2E8F0
 ```
-Every text/surface pairing above must meet ≥4.5:1 contrast (body text) / ≥3:1 (large text, ≥24px or bold ≥19px) before use — this is the specific failure both reference sites had (see `00-PRODUCT-DEFINITION.md` §2) and must not be repeated.
+Every text/surface pairing above must meet ≥4.5:1 contrast (body text) / ≥3:1 (large text, ≥24px or bold ≥19px) before use — this is the specific failure both reference sites had (see `00-PRODUCT-DEFINITION.md` §2) and must not be repeated. **Two deliberate AA deviations from the reference's exact hexes:** the reference high-intent CTA `#F97316` (2.80:1 with white — fails even 3:1) is darkened to `#C2410C`, and status-warning `#F59E0B` (2.15:1) to `#B45309`. `#F97316`/`#F59E0B` may only appear as large-graphic/decorative accents on tinted backgrounds, never as text or button fill with white text.
 
 ### 2.3 Spacing (8px base rhythm)
 ```
 space.1=4px space.2=8px space.3=12px space.4=16px space.5=24px space.6=32px space.7=48px space.8=64px
 ```
 
-### 2.4 Radius & Shadow (restrained — avoids both references' overuse)
+### 2.4 Radius & Shadow (restrained — matches reference lg=4px xl=8px full=12px)
 ```
-radius.sm=6px  radius.md=10px  radius.lg=16px   (cards use md, buttons use sm, hero/banner containers use lg)
-shadow.1 = 0px 2px 8px rgba(15,23,42,0.08)   (cards, dropdowns)
-shadow.2 = 0px 8px 24px rgba(15,23,42,0.12)  (modals, popovers)
+radius.sm=4px  radius.md=8px  radius.lg=12px   (cards use md, buttons use sm, pills/icon-circles use lg)
+radius.full = 9999px   (pills, chips, icon-circles, avatar frames)
+shadow.1    = 0px 1px 2px rgba(0,53,95,0.06)          (resting cards, dropdowns)
+shadow.2    = 0px 8px 24px rgba(0,53,95,0.10)         (modals, popovers)
+shadow.hover = 0px 12px 24px -4px rgba(0,53,95,0.04)  (card hover lift — ambient, primary-tinted)
 ```
-No more than these two shadow levels anywhere.
+No more than these three shadow levels anywhere (the original "no more than two" rule still holds — the third is the dedicated hover lift, not an extra resting level).
 
 ### 2.5 Motion
 ```
