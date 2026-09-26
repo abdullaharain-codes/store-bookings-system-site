@@ -5,6 +5,8 @@ node_modules/
 apps/*/dist/
 
 # ── Environment / secrets ────────────────────────────────────────────────────
+apps/*/.env
+apps/*/.env.*
 server/.env
 server/.env.backup
 server/.env.production
@@ -34,3 +36,4 @@ Thumbs.db
 
 
 design-reference/
+spike-ssg-poc/
