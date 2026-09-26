@@ -21,12 +21,16 @@ class EloquentCategoryRepository implements CategoryRepositoryInterface
 
     public function findBySlug(string $slug): ?Category
     {
-        return Category::query()->where('slug', $slug)->first();
+        return Category::query()
+            ->with(['logoAsset', 'bannerAsset'])
+            ->where('slug', $slug)
+            ->first();
     }
 
     public function findPublished(?int $parentId = null): Collection
     {
         return Category::query()
+            ->with(['logoAsset', 'bannerAsset'])
             ->where('is_published', true)
             ->when($parentId !== null, fn ($query) => $query->where('parent_category_id', $parentId))
             ->orderBy('display_order')
@@ -37,6 +41,7 @@ class EloquentCategoryRepository implements CategoryRepositoryInterface
     public function findAllForAdmin(array $filters = []): LengthAwarePaginator
     {
         return Category::query()
+            ->with(['logoAsset', 'bannerAsset'])
             ->when(
                 $filters['search'] ?? null,
                 fn ($query, string $search) => $query->where(function ($query) use ($search) {

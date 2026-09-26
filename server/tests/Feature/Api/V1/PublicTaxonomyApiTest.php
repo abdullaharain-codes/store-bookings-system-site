@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\Asset;
 use App\Models\Brand;
 use App\Models\Category;
 use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
@@ -79,6 +80,34 @@ test('newly published category appears on the public listing immediately', funct
 
     expect(collect($this->getJson('/api/v1/categories')->json('categories'))->pluck('slug'))
         ->toContain('fresh');
+});
+
+test('public category reads include eager-loaded logo and banner assets with a usable path', function () {
+    $logo = Asset::factory()->create(['path' => 'categories/laptops-logo.jpg', 'thumbnail_path' => 'categories/thumbs/laptops-logo.jpg']);
+    $banner = Asset::factory()->create(['path' => 'categories/laptops-banner.jpg', 'thumbnail_path' => 'categories/thumbs/laptops-banner.jpg']);
+
+    Category::factory()->create([
+        'name' => 'Laptops',
+        'slug' => 'laptops',
+        'is_published' => true,
+        'logo_asset_id' => $logo->id,
+        'banner_asset_id' => $banner->id,
+    ]);
+
+    $index = $this->getJson('/api/v1/categories');
+
+    $index->assertOk()
+        ->assertJsonPath('categories.0.logo_asset.id', $logo->id)
+        ->assertJsonPath('categories.0.logo_asset.path', $logo->path)
+        ->assertJsonPath('categories.0.logo_asset.thumbnail_path', $logo->thumbnail_path)
+        ->assertJsonPath('categories.0.banner_asset.path', $banner->path);
+
+    $detail = $this->getJson('/api/v1/categories/laptops');
+
+    $detail->assertOk()
+        ->assertJsonPath('category.logo_asset.id', $logo->id)
+        ->assertJsonPath('category.logo_asset.path', $logo->path)
+        ->assertJsonPath('category.banner_asset.path', $banner->path);
 });
 
 // ─── Public brand reads ──────────────────────────────────────────────────────

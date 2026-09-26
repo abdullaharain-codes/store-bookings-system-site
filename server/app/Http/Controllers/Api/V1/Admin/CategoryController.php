@@ -36,6 +36,8 @@ class CategoryController extends Controller
 
     public function show(Category $category): JsonResponse
     {
+        $category->load(['logoAsset', 'bannerAsset']);
+
         return response()->json([
             'category' => $category,
         ]);

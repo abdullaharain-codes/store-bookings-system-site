@@ -39,6 +39,8 @@ Each phase below is only "complete" when it passes the Quality Gate at the botto
 **Testing:** unit test for slug uniqueness/generation; integration test confirming an unpublished category/brand is unreachable via public endpoint (IDOR check per `architecture.md` §10).
 **Completion criteria:** admin can create a category with logo/banner and publish it; it is retrievable via the public API with zero frontend code changes needed later.
 
+> **GAP FOUND & RESOLVED (2026-09-26, during frontend CategoryCard build):** Phase 2's public category read endpoints (`GET /categories`, `GET /categories/{slug}`) were not eager-loading `logoAsset`/`bannerAsset`, so published categories' logo/banner images never reached the public API despite being fully supported in the admin CRUD and database schema — a real gap in Phase 2's original "complete" verification, not a new requirement. Fixed: eager-loading added to `EloquentCategoryRepository::findPublished`/`findBySlug`/`findAllForAdmin` and `Admin\CategoryController::show`, the api-client `Category` type updated with `logo_asset`/`banner_asset`, and `CategoryCard` now renders real images. This is exactly the kind of regression the Quality Gate's "explicitly re-verify, don't assume" rule exists to catch.
+
 ---
 
 ## Phase 3 — Product Catalog (Admin + Public)

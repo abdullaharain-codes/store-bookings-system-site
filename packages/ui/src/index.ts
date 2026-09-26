@@ -10,4 +10,5 @@ export { ErrorState } from "./components/ErrorState";
 export { ProductCard } from "./components/ProductCard";
 export { ServiceCard } from "./components/ServiceCard";
 export { ClickableArea } from "./components/ClickableArea";
+export { CategoryCard } from "./components/CategoryCard";
 export { formatPrice } from "./utils/format-price";

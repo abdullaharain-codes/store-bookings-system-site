@@ -20,6 +20,8 @@ export interface Category {
   display_order: number;
   is_published: boolean;
   parent_category_id: number | null;
+  logo_asset: Asset | null;
+  banner_asset: Asset | null;
   created_at?: string;
   updated_at?: string;
 }
