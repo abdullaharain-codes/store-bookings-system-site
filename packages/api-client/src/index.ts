@@ -40,6 +40,12 @@ export {
   type OrderResponse,
   type OrdersResponse,
 } from "./order";
+export {
+  getServices,
+  getServiceBySlug,
+  type Service,
+  type ServicesResponse,
+} from "./services";
 export { useAuthStore, type User } from "./stores/auth-store";
 export { usePendingActionStore } from "./stores/pending-action-store";
 export { useRedirectAndResume } from "./hooks/use-redirect-and-resume";
