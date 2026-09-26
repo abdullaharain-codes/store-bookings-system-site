@@ -35,6 +35,8 @@ class BrandController extends Controller
 
     public function show(Brand $brand): JsonResponse
     {
+        $brand->load(['logoAsset']);
+
         return response()->json([
             'brand' => $brand,
         ]);

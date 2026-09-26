@@ -34,6 +34,7 @@ export interface Brand {
   logo_asset_id: number | null;
   banner_asset_id: number | null;
   is_published: boolean;
+  logo_asset: Asset | null;
   created_at?: string;
   updated_at?: string;
 }

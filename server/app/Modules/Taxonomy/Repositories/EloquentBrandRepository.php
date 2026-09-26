@@ -16,12 +16,16 @@ class EloquentBrandRepository implements BrandRepositoryInterface
 
     public function findBySlug(string $slug): ?Brand
     {
-        return Brand::query()->where('slug', $slug)->first();
+        return Brand::query()
+            ->with(['logoAsset'])
+            ->where('slug', $slug)
+            ->first();
     }
 
     public function findPublished(): Collection
     {
         return Brand::query()
+            ->with(['logoAsset'])
             ->where('is_published', true)
             ->orderBy('name')
             ->get();
@@ -30,6 +34,7 @@ class EloquentBrandRepository implements BrandRepositoryInterface
     public function findAllForAdmin(array $filters = []): LengthAwarePaginator
     {
         return Brand::query()
+            ->with(['logoAsset'])
             ->when(
                 $filters['search'] ?? null,
                 fn ($query, string $search) => $query->where(function ($query) use ($search) {

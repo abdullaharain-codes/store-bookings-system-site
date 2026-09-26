@@ -112,6 +112,30 @@ test('public category reads include eager-loaded logo and banner assets with a u
 
 // ─── Public brand reads ──────────────────────────────────────────────────────
 
+test('public brand reads include eager-loaded logo asset with a usable path', function () {
+    $logo = Asset::factory()->create(['path' => 'brands/acme-logo.jpg', 'thumbnail_path' => 'brands/thumbs/acme-logo.jpg']);
+
+    Brand::factory()->create([
+        'name' => 'Acme',
+        'slug' => 'acme',
+        'is_published' => true,
+        'logo_asset_id' => $logo->id,
+    ]);
+
+    $index = $this->getJson('/api/v1/brands');
+
+    $index->assertOk()
+        ->assertJsonPath('brands.0.logo_asset.id', $logo->id)
+        ->assertJsonPath('brands.0.logo_asset.path', $logo->path)
+        ->assertJsonPath('brands.0.logo_asset.thumbnail_path', $logo->thumbnail_path);
+
+    $detail = $this->getJson('/api/v1/brands/acme');
+
+    $detail->assertOk()
+        ->assertJsonPath('brand.logo_asset.id', $logo->id)
+        ->assertJsonPath('brand.logo_asset.path', $logo->path);
+});
+
 test('public brands index returns only published brands', function () {
     Brand::factory()->create(['slug' => 'shown-brand', 'is_published' => true]);
     Brand::factory()->create(['slug' => 'hidden-brand', 'is_published' => false]);
