@@ -175,3 +175,8 @@ A phase is not marked complete unless:
 - Rules from `rules.md` followed (no hard-coded values, proper auth enforcement, tests present).
 - No regression introduced in a previously completed phase (explicitly re-verify, don't assume).
 - Responsive and accessibility behavior checked for any new screen/component.
+
+---
+
+## Frontend Testing Debt (tracked, not blocking)
+TRACKED (not urgent): packages/api-client's catalog.ts, cart.ts, order.ts, and address.ts modules have no unit test coverage (pre-existing gap, predates the services.ts module which does have tests as of 2026-09-26). Should be closed during a future hardening pass, mirroring the discipline already applied to services.ts and to every packages/ui component.
