@@ -182,3 +182,5 @@ A phase is not marked complete unless:
 
 ## Frontend Testing Debt (tracked, not blocking)
 TRACKED (not urgent): packages/api-client's catalog.ts, cart.ts, order.ts, and address.ts modules have no unit test coverage (pre-existing gap, predates the services.ts module which does have tests as of 2026-09-26). Should be closed during a future hardening pass, mirroring the discipline already applied to services.ts and to every packages/ui component.
+
+TRACKED (not urgent): several early packages/ui components (EmptyState, LoadingSkeleton, ErrorState, and possibly others built before the design-token reconciliation on 2026-09-26) use ambiguous Tailwind arbitrary-value syntax for CSS-variable-based font sizes/colors (e.g. text-[var(--font-size-lg)]) which Tailwind v4 may misinterpret without an explicit type hint (text-[length:var(--...)] vs text-[color:var(--...)]). ProductCard's 2026-09-26 rework uses the correct explicit-type-hint syntax. Existing components should be audited and fixed opportunistically as each is reworked to match design-reference, not as a standalone retroactive pass.

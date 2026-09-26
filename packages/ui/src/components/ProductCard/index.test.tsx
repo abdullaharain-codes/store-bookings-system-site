@@ -179,4 +179,20 @@ describe("ProductCard", () => {
     expect(screen.queryByText("Rs. 150,000")).not.toBeInTheDocument();
     expect(screen.queryByRole("button")).not.toBeInTheDocument();
   });
+
+  it("wires the hover treatment classes (image zoom + card lift) that jsdom cannot exercise at runtime", () => {
+    const { container } = render(<ProductCard product={makeProduct()} />);
+
+    // The card lift now comes from Card's `interactive` prop (ProductCard passes
+    // `interactive`), so these classes live on the rendered Card root.
+    const card = container.firstElementChild as HTMLElement;
+    expect(card.className).toContain("hover:shadow-[var(--shadow-hover)]");
+    expect(card.className).toContain("hover:-translate-y-0.5");
+    expect(card.className).toContain("transition-[box-shadow,transform]");
+
+    const image = screen.getByAltText("Latitude 7450");
+    expect(image.className).toContain("group-hover:scale-105");
+    expect(image.className).toContain("mix-blend-darken");
+    expect(image.className).toContain("object-contain");
+  });
 });

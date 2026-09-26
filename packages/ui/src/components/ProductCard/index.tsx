@@ -95,63 +95,60 @@ export const ProductCard = forwardRef<HTMLDivElement, ProductCardProps>(
     return (
       <Card
         ref={ref}
-        className="flex flex-col gap-[var(--space-3)]"
+        interactive
+        className="flex flex-col gap-[var(--space-3)] overflow-hidden"
       >
-        <div className="relative">
-          <ClickableArea onActivate={onViewDetails}>
+        <div className="group relative -mx-4 -mt-4 flex aspect-[4/3] w-full items-center justify-center overflow-hidden bg-[var(--color-surface-muted)] p-4">
+          <ClickableArea onActivate={onViewDetails} className="h-full w-full">
             {image ? (
               <img
                 src={image.path}
                 alt={product.name}
-                className="h-40 w-full rounded-[var(--radius-sm)] object-cover"
+                className="h-full w-full object-contain mix-blend-darken transition-transform duration-500 group-hover:scale-105"
               />
             ) : (
-              <div
-                aria-hidden="true"
-                className="h-40 w-full rounded-[var(--radius-sm)] bg-[var(--color-surface-muted)]"
-              />
+              <div aria-hidden="true" className="h-full w-full" />
             )}
           </ClickableArea>
-          <Button
-            type="button"
-            variant="tertiary"
-            size="sm"
-            aria-label={wishlisted ? "Remove from wishlist" : "Add to wishlist"}
-            aria-pressed={wishlisted}
-            className="absolute right-0 top-0"
-            disabled={!onWishlistToggle}
-            onClick={() => onWishlistToggle?.(product.id)}
-          >
-            <HeartIcon filled={wishlisted} />
-          </Button>
+          {/* Opaque frosted chip behind the overlay badge: guarantees separation
+              from whatever photo content underneath (product images are arbitrary
+              uploads, so the 10%-tint pill alone is not reliably contrast-safe).
+              Same backing as the wishlist chip so both overlays read as one
+              treatment. Don't remove as "redundant" styling. */}
+          <div className="absolute left-[var(--space-3)] top-[var(--space-3)] z-10 rounded-full bg-[var(--color-surface-base)]/90 shadow-[var(--shadow-1)] ring-1 ring-[var(--color-border-default)] backdrop-blur-sm">
+            <Badge variant={stock.variant}>{stock.label}</Badge>
+          </div>
+          {/* Solid chip so the heart always contrasts against arbitrary photo
+              content — mirrors the reference's overlay-icon solution: circular
+              carousel-arrow buttons over photos use a solid bg-white circle +
+              border + shadow rather than a bare icon (homepage code.html). */}
+          <div className="absolute right-[var(--space-3)] top-[var(--space-3)] z-10 rounded-full bg-[var(--color-surface-base)]/90 shadow-[var(--shadow-1)] ring-1 ring-[var(--color-border-default)] backdrop-blur-sm">
+            <Button
+              type="button"
+              variant="tertiary"
+              size="sm"
+              aria-label={wishlisted ? "Remove from wishlist" : "Add to wishlist"}
+              aria-pressed={wishlisted}
+              disabled={!onWishlistToggle}
+              onClick={() => onWishlistToggle?.(product.id)}
+            >
+              <HeartIcon filled={wishlisted} />
+            </Button>
+          </div>
         </div>
 
-        <ClickableArea onActivate={onViewDetails}>
+        <ClickableArea onActivate={onViewDetails} className="flex-grow">
           <div className="flex flex-col gap-[var(--space-1)]">
             {product.brand?.name && (
-              <span className="text-xs text-[var(--color-text-secondary)]">
+              <span className="text-[length:var(--font-size-label-caps)] font-semibold uppercase tracking-[var(--letter-spacing-label-caps)] text-[var(--color-text-muted)]">
                 {product.brand.name}
               </span>
             )}
-            <h3 className="line-clamp-2 text-sm font-medium text-[var(--color-text-primary)]">
+            <h3 className="line-clamp-2 font-[family-name:var(--font-family-display)] text-[length:var(--font-size-md)] font-semibold leading-tight text-[var(--color-text-primary)]">
               {product.name}
             </h3>
           </div>
         </ClickableArea>
-
-        <div className="flex flex-wrap items-center gap-[var(--space-2)]">
-          <span className="text-base font-semibold text-[var(--color-text-primary)]">
-            {price}
-          </span>
-          {discount !== null && (
-            <>
-              <span className="text-sm text-[var(--color-text-secondary)] line-through">
-                {formatPrice(compareAtPrice!)}
-              </span>
-              <Badge variant="error">-{discount}%</Badge>
-            </>
-          )}
-        </div>
 
         {showRating && (
           <div
@@ -179,8 +176,25 @@ export const ProductCard = forwardRef<HTMLDivElement, ProductCardProps>(
           </div>
         )}
 
-        <div className="mt-auto flex items-center justify-between gap-[var(--space-3)]">
-          <Badge variant={stock.variant}>{stock.label}</Badge>
+        <div className="mt-auto flex items-end justify-between border-t border-[var(--color-border-default)] pt-[var(--space-4)]">
+          <div className="flex flex-col items-start gap-[var(--space-1)]">
+            <p className="text-[length:var(--font-size-label-caps)] font-semibold tracking-[var(--letter-spacing-label-caps)] text-[var(--color-text-muted)]">
+              Price
+            </p>
+            <div className="flex flex-wrap items-baseline gap-[var(--space-2)]">
+              <span className="font-[family-name:var(--font-family-display)] text-[length:var(--font-size-price-display)] font-bold text-[var(--color-text-primary)]">
+                {price}
+              </span>
+              {discount !== null && (
+                <>
+                  <span className="text-sm text-[var(--color-text-secondary)] line-through">
+                    {formatPrice(compareAtPrice!)}
+                  </span>
+                  <Badge variant="error">-{discount}%</Badge>
+                </>
+              )}
+            </div>
+          </div>
           <Button
             type="button"
             variant="primary"
