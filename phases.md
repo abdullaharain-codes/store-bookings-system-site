@@ -1,5 +1,5 @@
 # phases.md — Development Roadmap
-**Location in repo:** `/docs/phases.md`
+**Location in repo:** `/phases.md` (repo root, alongside `PRD.md`, `SRS.md`, `architecture.md`, `rules.md`, `design.md`, `frontend-plan.md`)
 **Depends on:** `PRD.md`, `architecture.md`, `rules.md`
 
 Each phase below is only "complete" when it passes the Quality Gate at the bottom of this document. No phase begins until the prior phase's foundation is verified working.
@@ -89,7 +89,7 @@ Each phase below is only "complete" when it passes the Quality Gate at the botto
 **Features:** Business hours/holiday config, buffer time, minimum booking notice (all via `BusinessSetting`), slot generation, temporary slot holds, overlap/double-booking prevention (DB constraint + transaction-level check per `architecture.md` §4.2), nearest-slot suggestion logic.
 **Dependencies:** Phase 6, Phase 1 settings module.
 **Testing:** heavy unit/integration testing here specifically — concurrent booking-attempt test proving double-booking is structurally impossible, not just discouraged by the UI.
-**Completion criteria:** availability API correctly reflects all configured constraints and cannot be raced into a double booking.
+**Completion criteria:** availability API correctly reflects all configured constraints and cannot be raced into a double booking. *(Read half delivered by BE3, 2026-10-05: `GET /api/v1/services/{slug}/availability` reflects business hours, holidays, buffer, minimum notice, active holds and non-cancelled bookings. The write-half - holds + `BookingService`'s re-validation under concurrency - remains Phase 7 work.)*
 
 ---
 
@@ -138,6 +138,62 @@ This also delivers Phase 9's deferred item: the customer account area's Notifica
 
 ---
 
+## Frontend Build (parallel track to Phase 12)
+The frontend runs as its own track rather than inside Phase 12, because it can proceed against the already-complete backend while Phase 12 hardening is still open. Backend Phases 1–11 are ✅ complete; the backend surface this track consumes is stable.
+
+**Current test totals (2026-09-30):** backend **631** · ui **160** · api-client **203** · storefront **143**.
+
+### Step 0 — Dev setup fixes
+✅ **Done.** Distinct dev ports (storefront 5173 / admin 5174), per-app `VITE_API_URL`, `@ecommerce/ui` peer ranges aligned to React 19 + Tailwind v4, `QueryClientProvider` wired in both apps, clean workspace install.
+
+### Step 1 — `@ecommerce/ui` (shared design system)
+✅ **Done — every exported component is tested.**
+
+Exported from `packages/ui/src/index.ts` (21 components/utilities, each with a colocated test): `Button`, `Input`, `Select`, `Textarea`, `Tabs`, `Card`, `Badge`, `Modal`, `Carousel`, `EmptyState`, `LoadingSkeleton`, `ErrorState`, `ProductCard`, `ServiceCard`, `ClickableArea`, `CategoryCard`, `CategoryBanner`, `Stepper`, `DataTable`, `BrandCard`, plus the `formatPrice` utility. Design tokens live in `src/styles/tokens.css` (Tailwind v4 syntax).
+Still open (tracked, not blocking): the `EmptyState`/`LoadingSkeleton`/`ErrorState` arbitrary-value audit, the `ServiceCard` icon-tile gap, the `ClickableArea` focus-ring radius mismatch, and the missing aggregate rating — all listed under Frontend Testing Debt / design gaps below.
+
+### Step 2 — `@ecommerce/api-client` (typed API layer)
+✅ **Done:** `catalog`, `cart`, `wishlist`, `order`, `address`, `services`, `reviews`, `dashboard`, `notifications`, `profile`, `homepage-banners`, `review-showcase`, plus the `auth` store, the `useRedirectAndResume` hook, the pending-action store, and the `isSafeInternalPath`/`isSafeApiUrl` guards.
+
+**MISSING:**
+- `bookings.ts` — no client module (create/cancel/reschedule/availability). The backend endpoints exist; the typed wrapper does not.
+- `admin/*` — **zero** coverage. The whole admin surface (56 endpoints) is unimplemented on the client: products, taxonomy, services, orders, bookings, merchandising, settings, assets.
+- Asset upload — no `POST /admin/assets` upload helper/wiring.
+
+**B2a (2026-09-30) — data layer, no UI changes:**
+- Added `review-showcase.ts`: `getReviewShowcase(page?)` → `GET /review-showcase`, returning the `{ review_showcase_items: <paginator> }` envelope the controller actually wraps. Reuses the existing `Asset` and `Paginator<T>` types from `catalog.ts` rather than redeclaring them, and is exported (value + types) from `src/index.ts`.
+- `getProducts` gained `perPage?: number`, clamped client-side to an integer in **1..48** (fractions rounded, then clamped; a non-finite value throws rather than putting `NaN` on the wire). The cap is a client-side guard only — the server still accepts unbounded `per_page`, which is why Phase 12 item 10 stays open.
+- `getProducts` now builds its `params` key-by-key instead of sending an object of explicit `undefined` values, so an unset filter is genuinely absent from the request rather than present-and-undefined.
+- New colocated suites: `catalog.test.ts` (21), `address.test.ts` (6), `review-showcase.test.ts` (7) — every exported function, asserting URL, method/body, exact params, absent params, response unwrapping, and error propagation. api-client is now **203 tests / 16 files**.
+- Storefront MSW gained typed `GET /products` and `GET /review-showcase` handlers with fixtures, `callCounts.products`/`reviewShowcase`, and per-test request recorders (`productRequests`/`reviewShowcaseRequests`, reset in `setup.ts`). The products handler mirrors the real controller: publishes only, honours `per_page`/`category_id`/`brand_id`/`search`/`sort`/`page`, clamps `per_page` to 1..48, and expands a parent `category_id` to its descendants the way the Taxonomy scope does. `handlers.test.ts` (17) exercises the **real** client functions against these handlers, so a param the client meant to send but never did cannot pass. No existing handler behaviour and `onUnhandledRequest: "error"` were changed.
+
+### Step 3 — Storefront app
+✅ **Done:** Home page rendering live API data; React Router v7 **Framework Mode** in SPA mode (`ssr:false` + `prerender()` for `/`, `/shop`, `/services`, `/login`, `/register`); `SessionBootstrap` one-time session check; `RequireAuth` pathless guard on `/cart`, `/wishlist`, `/account`; real Login and Register pages sharing one `usePostAuthNavigation` hook; full MSW test harness (handlers + server + setup + router helper) with `onUnhandledRequest: "error"`.
+
+✅ **Layout shell (B1 + B1b review fixes) — done:** pathless `site-layout` route wrapping every page except the two auth routes; `SiteHeader` (sticky `<header>`, live category tree rebuilt from `parent_category_id`, live brands, `search`-param search box, session-aware Account/Log out vs guest Log in, cart badge, wishlist, mobile disclosure menu, one-open-panel dropdowns that dismiss on outside press, focus-out, Escape with focus return, and navigation); `SiteAnnouncement` rendered as a sibling **above** the header in the layout; `SiteFooter`; typed `VITE_SITE_*` config; shared `queryKeys` for taxonomy so the header nav and Home reuse one cached request.
+
+Known limitations of the shell, all deliberate:
+- **Login/Register are intentionally chromeless** — they render outside `SiteLayout` (own `<main>`/`<h1>`, no header or footer), matching the reference login/register screens.
+- **The footer has no policy links and no contact block** unless configured; every footer entry is `VITE_SITE_*`-driven so no dead links ship by default.
+- **The announcement strip is env-driven** (`VITE_SITE_ANNOUNCEMENT`) and renders nothing when unset.
+- **`/our-brands` is still undecided** — the header links brands into `/shop/brand/:slug`; whether a dedicated brands index page is needed is an open call.
+- The sticky header pins at `top-0` and the announcement scrolls away; the reference instead docks the header at `top-[32px]` so the strip stays visible. Accepted divergence.
+
+**Pending:**
+- Shop listing + category + brand pages (routed, placeholder content only).
+- Product detail, service detail, services listing (routed, placeholder content only).
+- Cart and wishlist (routed, placeholder content only — no api-client wiring yet).
+- Checkout (**the `/checkout` route does not exist**) and order confirmation.
+- Account pages (only the `/account` layout and its dashboard index are routed; orders, bookings, profile, addresses, notifications are not).
+- Booking wizard (start step only; confirm-step gate pending).
+- Reviews / Review Showcase.
+- SEO: per-route `<title>`/meta, `sitemap.xml`, `robots.txt`, `clientLoader` + `HydrateFallback` for the dynamic slug routes.
+
+### Step 4 — Admin app
+Scaffold + Login only. `apps/admin` is a plain client SPA with a placeholder dashboard and a stub login page; there is **no routing surface and no client-side role guard** beyond calling `fetchUser()` on mount (see Phase 12 item 19).
+
+---
+
 ## Phase 12 — Hardening
 **Objective:** security review, performance pass, accessibility audit, SEO, full responsive QA across every phase's screens — including both carousels, all admin CRUD screens, and the full booking/checkout flows.
 **Dependencies:** all feature phases complete.
@@ -153,13 +209,18 @@ This also delivers Phase 9's deferred item: the customer account area's Notifica
 6. **Rate limiting on auth/review-submission/password-change** — ✅ Resolved in Phase 11 (named limiters: login email+IP compound, register IP, password-change per-user, review-submission per-user).
 7. **storage/uploads/.htaccess execution-deny** — ✅ Resolved in Phase 11 (SRS §3.7).
 8. **FileUploadService dimension-limit enforcement (was preset-optional, silently skippable)** — ✅ Resolved in Phase 11 (now category-derived, mandatory, SRS §3.4).
-9. **shipping_fee stored as string not decimal** — orders store shipping_fee as a string rather than a locale-safe decimal; normalize the column/casting and re-audit all comparisons for correctness.
-10. **Public listing endpoints have no per_page cap** — list endpoints accept unbounded per_page without an upper bound; introduce a documented cap.
+9. **`shipping_fee` stored as string not decimal** (audited 2026-09-30, closed) — Audited 2026-09-30: the DB column is `decimal(10,2)` and `Order` casts `decimal:2`; the API returns decimal strings by design and the frontend parses them via `formatPrice`. Not a defect; no change needed.
+10. **Public listing endpoints have no per_page cap** — list endpoints accept unbounded per_page without an upper bound; introduce a documented cap. **Partially mitigated on the client (2026-09-30, B2a):** `getProducts` now clamps `perPage` to 1..48 and documents the cap, so the storefront client cannot ask for an unbounded page. This is a client-side guard only — `ProductController` still reads `per_page` straight off the request with no validation, so any other caller (or a hand-rolled request) can still pull an arbitrarily large page. The server-side cap in a `FormRequest` is what actually closes this item.
 11. **SlotGenerationService::nearestAvailableSlot() N+1** — the nearest-slot suggestion issues queries per candidate day; collapse to a bounded query set.
 12. **HomepageBanner/ReviewShowcase reorder() partial-ID-list stale display_order** — reordering with a partial ID list leaves unlisted rows at stale display_order values; reconcile ordering for partial lists.
 13. **Production MySQL transaction_isolation should be confirmed REPEATABLE READ** — the booking-slot concurrency guarantees assume REPEATABLE READ; verify Hostinger MySQL's default before go-live.
 14. **No cross-device session invalidation after password change** — a password change does not invalidate sessions/tokens on other devices; add invalidation for Phase 12.
 15. **AdminAssetController uses inline `$request->validate()` instead of a dedicated FormRequest** — unlike every other admin controller in this codebase, a deliberate scope-limited deviation from the Task upload-endpoint; align it with the FormRequest pattern for consistency.
+16. **Badge `success` variant fails WCAG AA** - `--color-status-success: #16A34A` as text on a 10%-tint background (effectively near-white) is roughly 3.3:1 at 12px, below the 4.5:1 body-text threshold. Darken the token or switch the variant to a darker text colour; do not ship it as-is (`design.md` §2.2).
+17. **`allowScripts` is set in the wrong `package.json`** - it currently lives in `apps/storefront/package.json`, and npm ignores it there (it must be at the workspace **root**), so the esbuild postinstall approval is silently a no-op. Move the field to the root `package.json`.
+18. **`usePostAuthNavigation` snapshots pending state at render time** - it reads `hasPendingAction` through a `useCallback` dependency, so a pending action written *after* the hook mounts is invisible to the closure. Read the pending action at call time via `usePendingActionStore.getState()` instead.
+19. **Admin app has no role guard or route protection** - `apps/admin` renders its dashboard at `/` unconditionally and only calls `fetchUser()` on mount; every admin screen is reachable client-side by a non-admin user until the API rejects the call. Add a client-side role guard / route protection as a UX measure in Stage C (server-side enforcement is already correct and remains the real boundary, per `PRD.md` §5.5).
+20. **Production cookie/CORS/mail settings not yet applied** - `SESSION_DOMAIN`, `SESSION_SECURE_COOKIE`, `SANCTUM_STATEFUL_DOMAINS`, the CORS `allowed_origins` list, and `MAIL_MAILER` (currently `log`) must all be set per the `SRS.md` §6.2.1 checklist before go-live. A wrong cookie domain or an unset `MAIL_MAILER` fails silently rather than loudly.
 
 ---
 
@@ -167,6 +228,26 @@ This also delivers Phase 9's deferred item: the customer account area's Notifica
 **Objective:** go-live.
 **Dependencies:** Phase 12.
 **Completion criteria:** production environment configured (env vars, HTTPS, CORS, logging, error monitoring, DB backups considered), smoke-tested in production.
+
+**Checklist:**
+- [ ] Production PHP must have `ext-gd` (verify `php -m` shows gd on Hostinger PHP 8.3); `FileUploadService` hard-codes the GD driver and `ProductService` injects it, so a missing GD breaks every product endpoint.
+
+---
+
+## Running backend tests (Docker)
+The Windows host has Smart App Control enabled, which blocks the host's `ext-gd` at load time (Code Integrity event 3033: `php_gd.dll did not meet the Enterprise signing level requirements`). Because `FileUploadService` hard-codes Intervention's GD driver, a missing GD 500s every `/api/v1/admin/products` and `/api/v1/admin/assets` request, not just uploads — 63 backend tests failed on 2026-10-01 purely from this environmental cause.
+
+Run the suite in the container defined in `infra/dev/` (dev-only; **not** part of the Hostinger deploy):
+
+```bash
+cd infra/dev
+docker compose build          # once
+docker compose run --rm api   # php -v, php -m | grep -i gd, composer install, php artisan test
+```
+
+Baseline on that image: **631 passed**, 2407 assertions, ~155–185s. `server/phpunit.xml` pins `DB_CONNECTION=sqlite` / `DB_DATABASE=":memory:"`, so no database service is needed. `vendor/` lives in a named volume so Composer never writes through the OneDrive bind mount; the container runs no JavaScript, so `node_modules` is not mounted.
+
+Note the image is `php:8.5-cli`, not 8.3: `server/composer.lock` pins Symfony 8.1 components and `laravel/framework` 13.25, which require **php >= 8.4.1**. `server/composer.json` still declares `php: ^8.3`, which is stale relative to the lock — worth reconciling separately.
 
 ---
 
@@ -177,10 +258,498 @@ A phase is not marked complete unless:
 - Rules from `rules.md` followed (no hard-coded values, proper auth enforcement, tests present).
 - No regression introduced in a previously completed phase (explicitly re-verify, don't assume).
 - Responsive and accessibility behavior checked for any new screen/component.
+- **Built CSS actually contains `@ecommerce/ui` classes** (added by TW1): after building each app, run `node scripts/check-built-css.mjs <built-app-css>` against `apps/storefront/build/client/assets/root-*.css` and `apps/admin/dist/assets/index-*.css`; both must exit 0. Tailwind v4 scans the app's Vite root only, so if the `@source` line in `packages/ui/src/styles/index.css` is lost, every ui-only class disappears with **no build error and no test failure** — the components just render unstyled. Manual release/D4 gate; no CI exists yet.
 
 ---
 
 ## Frontend Testing Debt (tracked, not blocking)
-TRACKED (not urgent): packages/api-client's catalog.ts, cart.ts, order.ts, and address.ts modules have no unit test coverage (pre-existing gap, predates the services.ts module which does have tests as of 2026-09-26). Should be closed during a future hardening pass, mirroring the discipline already applied to services.ts and to every packages/ui component.
+CLOSED (2026-09-30): `apiClient` itself, `useAuthStore`, and `useRedirectAndResume` now have colocated test suites, and the `Input` and `Badge` ui components are tested. services.ts gained tests on 2026-09-26; wishlist.ts, cart.ts, and order.ts were closed 2026-09-27 in the same hardening pass that fixed the cart/wishlist product eager-loading; reviews, dashboard, notifications, profile, and homepage-banners followed in the same pass.
+
+CLOSED (2026-09-30, B2a): `catalog.ts` and `address.ts` — the last two untested api-client modules — now have colocated suites covering every exported function, plus a new `review-showcase.ts` module and its suite. **Every runtime module in `packages/api-client/src` is now exercised by at least one test.** Two deliberate nuances, so this is not overclaimed: `stores/pending-action-store.ts` has no dedicated colocated file (it is covered thoroughly by `hooks/use-redirect-and-resume.test.ts`, which asserts against it in 19 places), and `index.ts` is a pure re-export barrel with no logic to test.
+
+MITIGATED (2026-09-30, TASK T1) — T1 attributed the storefront suite's intermittent failures to **synchronous queries asserting on asynchronously-rendered content**, and shipped `maxWorkers: 2` in `apps/storefront/vitest.config.ts` as a CPU-contention mitigation. T1's stated diagnosis was later falsified (see RESOLVED (T2) below); the `maxWorkers: 2` mitigation itself was measured sound and has now been removed.
+
+MITIGATED (2026-09-30, TASK T1) — five tests in four files were named as the suspects: `register.test.tsx` "renders server 422 field errors next to the matching field" (L147 `getByLabelText`, L152 `getByTestId`) and "clears a server field error once the field is edited" (L180); `site-layout.test.tsx` "renders exactly one main landmark, focusable programmatically" (L15 `getAllByRole("main")` in a non-async `it`); `SiteHeader.test.tsx` "exposes banner, navigation and search landmarks" (L58-61); `redirect-and-resume.flow.test.tsx` scenario 1 (L147 `getByRole` add-to-cart, L160 `getByRole` Cart heading). The shared `fillForm` helper in `register.test.tsx` (L30-42, sync `getByLabelText`) was also implicated.
+
+The previously recorded explanation ("RTL `asyncUtilTimeout` too tight under load") was wrong and is corrected here. Evidence: there is no `findByLabelText` anywhere in `app/`, so no async timeout setting can reach the failing query; and candidate C (`asyncUtilTimeout: 4000` + `testTimeout: 15000`) ran 10/10 at 13.2 s mean versus the 13.1 s baseline — a no-op.
+
+**T1 measurements**, each over 10 full runs: baseline `maxWorkers` unset — 10/10 at 13.1 s mean; `fileParallelism: false` — 10/10 at 33.7 s; timeouts raised — 10/10 at 13.2 s; `maxWorkers: 2` — 10/10 at 18.3 s, then 20/20 consecutive clean runs at 143/143, mean 18.1 s, max 18.3 s.
+
+RESOLVED (2026-10-01, TASK T2) — **T1's diagnosis was wrong, and `maxWorkers: 2` has been removed.** Two findings:
+
+1. *The named tests are not racing async content.* T2 injected 300 ms of latency into the two MSW handlers those tests actually depend on (`GET /auth/user`, which SessionBootstrap fires in a `useEffect`, and `POST /auth/register`, which produces the 422 the assertions read) and re-ran all four files: **52/52 passed**. Each suspect query is in fact static first-render content, or sits immediately after an awaited async assertion: `register.test.tsx` L147/L152/L180 all follow `await screen.findByText(...)`, which has already awaited the store update and its render; `site-layout.test.tsx` L15 targets static JSX in `site-layout.tsx`; `SiteHeader.test.tsx` L58-61 are static landmarks and its `setSession("guest")` pre-sets `isSessionChecked`, so `AuthActions`' early `return null` is never reached; the `fillForm` helper queries unconditional first-render inputs. A sync query after an awaited async assertion cannot lose that race, which is exactly why raising `asyncUtilTimeout` was a no-op in T1.
+2. *The mitigation was unnecessary.* With no `maxWorkers` key at all: **20/20 consecutive `npx vitest run`, exit 0 with 143/143 passed every time**, Duration mean 11.03 s, max 12.03 s, min 10.74 s; and **3 concurrent storefront suites × 5 rounds — 15/15 clean** at 143/143. No timeout was raised to obtain either number.
+
+No test files were changed: converting these queries to `findBy`/`waitFor` would add async machinery with no defect behind it. Test count remains 143. The original T1 failures were never reproduced on demand — 31 consecutive clean runs in T1, and 35 clean runs plus 15 stress runs in T2 — so the historical cause stays unexplained; what is now established is that the workaround is unnecessary and the named tests are sound.
 
 TRACKED (not urgent): several early packages/ui components (EmptyState, LoadingSkeleton, ErrorState, and possibly others built before the design-token reconciliation on 2026-09-26) use ambiguous Tailwind arbitrary-value syntax for CSS-variable-based font sizes/colors (e.g. text-[var(--font-size-lg)]) which Tailwind v4 may misinterpret without an explicit type hint (text-[length:var(--...)] vs text-[color:var(--...)]). ProductCard's 2026-09-26 rework uses the correct explicit-type-hint syntax. Existing components should be audited and fixed opportunistically as each is reworked to match design-reference, not as a standalone retroactive pass.
+
+**MEASURED (2026-10-03, TW1 — audit only, nothing fixed):** the risk is not hypothetical, and it is narrow. TW1 made packages/ui reachable to Tailwind for the first time, which emitted 84 unhinted `text-[var(--…)]` occurrences in non-test source into the app CSS. Sorting them by token: **82 are colour tokens and compile correctly** (`--color-text-primary` ×27, `--color-text-secondary` ×21, `--color-text-muted` ×9, `--color-brand-accent` ×13, plus status/surface singles) — they resolve to `color:` only because Tailwind infers colour from the token name, which is exactly why the untyped form is fragile rather than currently broken. **2 are genuinely wrong**: `EmptyState/index.tsx:23` and `ErrorState/index.tsx:24` both write `text-[var(--font-size-lg)]`, and the built CSS shows the literal rule `.text-\[var\(--font-size-lg\)\]{color:var(--font-size-lg)}` — a font-size token emitted as a **`color`** declaration, i.e. an invalid value that renders as inherited colour and **no font-size at all**. Both headings are currently unstyled in size. The fix is `text-[length:var(--font-size-lg)]` (the syntax the correct components already use). Left for the D2 audit per TW1's report-only scope.
+
+TRACKED (not urgent): ServiceCard's design-reference (our_it_services_apex_precision_tech) shows a 48×48 icon tile per service (laptop/router/memory glyphs), but no per-service icon or category field exists in the Service data model (services table: name/slug/description/price_min/price_max/duration_minutes/is_published only). ServiceCard's 2026-09-26 rework omits the icon tile rather than fabricate a glyph, and exposes an optional category?: string caller-supplied prop as a stopgap for the category badge. A future Service Categories/Icons feature (data model + API + type) would be needed to close this gap properly, mirroring ProductCard's logged spec-list gap.
+
+TRACKED (not urgent): ClickableArea's focus-visible ring uses --radius-sm, which doesn't match CategoryCard's pill shape (--radius-lg) — a focused pill will show a slightly squared ring against a more rounded shape. Cosmetic only, no functional impact. Consider making ClickableArea's ring radius a prop, or accepting the current visual mismatch, when ClickableArea is next revisited.
+
+TRACKED (not urgent): no aggregate rating (average_rating, review_count) is exposed anywhere in the Product/Service API responses — confirmed via full backend search (no withAvg/withCount/average_rating field exists). ProductCard's averageRating/reviewCount props are wired but will always be omitted until a backend gap-fix adds this aggregate (e.g. via a computed attribute or a meta block). Not urgent — rating display is optional, not a broken feature. Future task: backend aggregate + catalog.ts type addition + ProductCard wiring.
+
+---
+
+## B2b — Marquee primitive (2026-10-02)
+
+**Built:** `packages/ui/src/components/Marquee/` (+ `index.tsx`, `index.test.tsx`), `packages/ui/src/hooks/useReducedMotion.ts`, `packages/ui/src/styles/marquee.css`; exported from `packages/ui/src/index.ts`. A continuous scrolling band for the category/brand rows (design.md §3.4/§3.5). **Carousel is untouched** and keeps owning the Homepage Hero Banner and Review Showcase (design.md §3.7/§3.8, rules.md §4) — a band has no positions, no prev/next and no lightbox, so sharing Carousel would mean a second set of affordances on the same component.
+
+- **Props:** `children`, required `ariaLabel`, `durationSeconds` (default 40, clamped 10..120, non-finite falls back to the default), `direction` ("left" | "right"), `pauseControl` (default true).
+- **Duplicate copy:** items render twice for a seamless loop. Copy A is real content; copy B is `aria-hidden="true"` **and** `inert`, so it is neither announced nor focusable (`aria-hidden` alone does not remove keyboard focus — both are needed).
+- **Motion:** pure CSS `transform: translateX(-50%)` keyframes in the ui styles tree, `animation-play-state: paused` when `[data-paused="true"]`. No JS animation loop, no per-frame layout reads. Keyframes and pause rules were confirmed present in both the storefront and admin production CSS bundles. (The `-50%` translation was **not** correct as first written — see B2b-fix below for the g/2 seam bug and its fix.)
+- **Pause:** driven by React state from `onPointerEnter/Leave` and `onFocus/onBlur`, exposed as `data-paused` so it is assertable in jsdom. Focus containment via `relatedTarget` prevents flicker when focus moves between items. A real `<button>` with toggling "Pause scrolling"/"Resume scrolling", `aria-pressed`, visible focus ring, 44px target satisfies WCAG 2.2.2 and was **not** removed to match any screenshot.
+- **Reduced motion:** `useReducedMotion` (matchMedia, listener-based) switches to a single copy, no pause button, and a focusable `overflow-x-auto` strip with a visible focus ring. Plus a CSS `@media (prefers-reduced-motion: reduce)` net that forces `animation: none !important`.
+- **Tests:** 18 in `Marquee/index.test.tsx` as first shipped, since grown to **23** by B2b-fix. `packages/ui` is now **183 passing across 22 files** (was 160 / 21). Storefront unaffected at **143/143**, no `maxWorkers` key.
+
+**Two real bugs the tests caught (both fixed):**
+1. Clicking the pause button moved focus onto it, which tripped the focus-pause rule — so "Resume" re-paused instantly and the band could never restart while the button held focus. The button is now excluded from the content-focus flag. Covered by a dedicated keyboard-only resume test.
+2. The initial test asserting `getByRole` returns `undefined` was wrong (`getByRole` throws); corrected to `queryByRole`.
+
+**jsdom cannot verify these — left for the Playwright pass (D4), deliberately not faked:**
+- That the animation actually runs. The `-50%` translation was **not** seamless as first written: an arithmetic bug (g/2, see B2b-fix) made every cycle jump half a gap. What jsdom could not do was notice it; arithmetic could. Real-browser seam measurement is still on the D4 list.
+- Real layout: track width vs. copy width, and whether `w-max` + per-copy padding produce a true seamless wrap.
+- `animation-play-state: paused` genuinely halting motion (jsdom has no CSSOM animation engine); only the `data-paused` attribute is asserted here.
+- The `@media (prefers-reduced-motion: reduce)` CSS net — matchMedia is mocked, so only the JS branch is covered.
+- Visible focus ring rendering, 44px touch target, and overflow/scrollbar behaviour of the static strip.
+- Real `inert` behaviour in a browser (jsdom keeps the node in the DOM; the assertion relies on role queries excluding `aria-hidden`).
+
+**SSR choice:** `useReducedMotion` returns `false` for the first render on both server and client, applying the real value in an effect. This is deliberate — matching the server's first-render markup is what prevents a hydration mismatch; reading matchMedia during render would emit animated markup on the server and a static strip for a reduced-motion client. The cost is one extra commit for reduced-motion users, hidden by the CSS safety net so no motion is ever painted. Inverting it would flash duplicated decorative content to every non-reduced-motion user.
+
+**Typed away one environment quirk:** `packages/ui` resolves a nested `@types/react@18.3.31` while the runtime is React 19.3.0, and React 18's typings predate `inert`. Handled with a typed spread constant in the component rather than a module augmentation, so the markup type-checks identically whether ui sources are compiled by `packages/ui` (React 18 typings) or by an app's program (React 19 typings). Both `tsc -b` paths pass.
+
+**Not done here:** `design.md` §3.4 band-vs-grid reconciliation is B2b2, deliberately untouched. No page consumes Marquee yet, so no storefront changes were made or needed.
+
+---
+
+## B2b-fix — Marquee loop seam + short-list behaviour (2026-10-02)
+
+**The g/2 loop-seam bug.** B2b shipped a claim that seamlessness was "only verifiable in a real browser". That was wrong — it was *analytically broken*, and arithmetic review of the CSS found it without running anything. The original markup put `gap-[var(--space-6)]` on the track **and** `gap-[var(--space-6)]` inside each copy. With one copy's content width W (items + its internal gaps) and track gap g:
+
+| quantity | value |
+|---|---|
+| track width | `W + g + W` = `2W + g` |
+| keyframe translation `-50%` | `(2W + g) / 2` = `W + g/2` |
+| true loop period (start of copy A → start of copy B) | `W + g` |
+
+The translation was **short by g/2** (16px at `--space-6`), so every cycle jumped half a gap and the band visibly stuttered. It would have shipped broken; only a real browser would have shown it.
+
+**Fix.** All spacing moved inside the copies; the track now has **no gap**. Each copy ends with `padding-right: g`, so one copy's width is `W' = W + g`:
+
+| quantity | value |
+|---|---|
+| track width | `W' + W'` = `2W + 2g` |
+| keyframe translation `-50%` | `(2W + 2g) / 2` = `W + g` = `W'` |
+| true loop period | `W'` = `W + g` ✓ equal |
+
+The period is now exactly one copy's full width **including its trailing spacing**. Padding rather than margin is required: margin sits outside the copy's box and reproduces the same off-by-g/2 error. Both copies are now built from one shared `COPY_CLASSES` constant so their spacing cannot drift apart.
+
+**Short lists.** The track carries `min-w-[200%]` and each copy `grow` + `shrink-0` + `justify-around`, so a 2-item list still yields a track at least twice the clipped container width — always enough for the `-50%` translation to reveal copy B, with no blank space at the end of the band. When the items are narrower than the copy, `justify-around` distributes the leftover space evenly around them (half-gap at the edges, gap between items) rather than leaving them bunched at one edge. **This look has not been visually judged** — it needs the visual pass, where `justify-around`'s edge spacing is the thing most likely to want tuning.
+
+**Tests:** 5 new structural guards in `Marquee/index.test.tsx` (now **23 in that file**, `packages/ui` **183 across 22 files**). jsdom has no layout engine, so these assert the *class structure* the arithmetic depends on — no gap on the track, identical copy classes, trailing spacing as `pr-` not a track gap, `min-w-[200%]`/`grow`/`shrink-0`/`justify-around` present, and copy B still `aria-hidden` + `inert`. They would not have caught the g/2 error on their own (that was arithmetic); they exist so the *fixed* structure cannot silently regress. The failure output of the pre-fix run is the evidence they bite.
+
+**Callers:** JSDoc now states plainly that `children` are rendered twice, so item markup must not carry `id` attributes (duplicate ids are invalid HTML and break `aria-labelledby`/`for` resolution) and must not run mount side effects (analytics/impression tracking would fire twice).
+
+**jsdom cannot verify these — left for the Playwright pass (D4), deliberately not faked:**
+- **Real-browser measurement of the loop seam.** The g/2 error was found by arithmetic, but that the fixed version is *pixel*-seamless (first frame of a cycle landing exactly on where the last one ended) still needs a real render.
+- **Keyboard focus on an item that is currently translated out of view.** In an `overflow: hidden` band, Tab can move focus to an item that is off-screen inside the clipped container, leaving the focus ring invisible. Focus containment keeps the band *paused*, but nothing scrolls it back into view. Needs a real browser to observe and to decide the remedy.
+- Track width vs. copy width in practice, and whether `min-w-[200%]` + `grow` behave as derived under real layout.
+- That `justify-around` on a short list looks right (see above).
+- `animation-play-state: paused` genuinely halting motion; the `@media` reduced-motion net; visible focus ring; 44px touch target; static-strip overflow behaviour; real browser `inert` semantics.
+
+---
+
+## TW1 — Tailwind now scans packages/ui (2026-10-03)
+
+**The bug.** Classes used *only* inside `packages/ui` never reached either app's CSS. The storefront renders `BrandCard` at `_index.tsx:334`, yet `.h-24`, `.w-24` and `.object-contain` were absent from `build/client/assets/root-*.css`. Marquee's `h-11`/`w-11`/`w-max`/`justify-around` were absent too, so B2b's spacing classes would not have applied in a real browser even with correct markup. This was pre-existing (BrandCard shipped long before B2b), not caused by B2b.
+
+**Cause, read out of the installed toolchain rather than assumed:**
+- `@tailwindcss/vite@4.3.3` sets the scan base to the **Vite config root** — `compiler.root === null` → `[{ base: this.base, pattern: "**/*" }]`, where `this.base` is the app's own root. That is `apps/storefront` / `apps/admin`, never the monorepo root.
+- `packages/ui` is therefore outside the base *and* reached through the `node_modules/@ecommerce/ui` workspace symlink.
+- No `@source` directive and no safelist existed anywhere, so nothing compensated.
+
+**Correction to the earlier B2b-fix evidence (kept on the record).** That report's probes for *arbitrary* values (`pr-[var(--space-6)]`, `rounded-[var(--radius-lg)]`) used regexes that cannot match CSS, because Tailwind backslash-escapes those selectors. Those particular ABSENTs were meaningless. The valid evidence was the non-arbitrary probes (`.h-24{`, `.h-11{`), and those were real. TW1 re-tested everything with exact escaped-selector substring matching, and confirmed the corrected result: `.rounded-\[var\(--radius-lg\)\]` was in fact **already PRESENT** in the storefront bundle (the storefront's own source also uses that literal string), which is why only 10 of 12 probes were genuinely missing there while all 12 were missing in admin.
+
+**Fix — one shared line, no per-app wiring** in `packages/ui/src/styles/index.css`:
+
+```css
+@source "../**/*.{ts,tsx}";
+@source not "../**/*.test.ts";
+@source not "../**/*.test.tsx";
+```
+
+Paths in `@source` resolve relative to the CSS file containing the directive, so this works for every consumer automatically. `@source not` is supported in the installed 4.3.3 (`dist/lib.js` parses the `not ` prefix into a negated glob) and is **load-bearing, not decoration** — verified by negative control: deleting both `@source not` lines grows the storefront bundle 38783 → 38942 bytes and pulls in `.max-w-xs`, a utility that exists only in `Input/index.test.tsx`. (A first negative control was invalid — the regex stripped only the `.test.ts` line while leaving the `.test.tsx` line that actually guards `max-w-xs` — so it wrongly concluded the exclusions were unnecessary. Redone.)
+
+| probe (ui-only class) | storefront before | storefront after | admin before | admin after |
+|---|---|---|---|---|
+| `.h-24` | ABSENT | PRESENT | ABSENT | PRESENT |
+| `.w-24` | ABSENT | PRESENT | ABSENT | PRESENT |
+| `.object-contain` | ABSENT | PRESENT | ABSENT | PRESENT |
+| `.h-11` | ABSENT | PRESENT | ABSENT | PRESENT |
+| `.w-11` | ABSENT | PRESENT | ABSENT | PRESENT |
+| `.w-max` | ABSENT | PRESENT | ABSENT | PRESENT |
+| `.justify-around` | ABSENT | PRESENT | ABSENT | PRESENT |
+| `.min-h-\[44px\]` | ABSENT | PRESENT | ABSENT | PRESENT |
+| `.pr-\[var\(--space-6\)\]` | ABSENT | PRESENT | ABSENT | PRESENT |
+| `.min-w-\[200\%\]` | ABSENT | PRESENT | ABSENT | PRESENT |
+| `.rounded-\[var\(--radius-lg\)\]` | PRESENT* | PRESENT | ABSENT | PRESENT |
+| `.border-\[var\(--color-border-default\)\]` | PRESENT* | PRESENT | ABSENT | PRESENT |
+
+\* already present only because the storefront's *own* sources contain those exact strings; admin has no such copy, which is why admin is the cleaner signal.
+
+Bundle sizes: storefront **23504 → 38783 bytes** (+15279, +65%), admin **14582 → 36157 bytes** (+21575, +148%). Admin more than doubled because it consumes far fewer ui components and was therefore missing proportionally more.
+
+**Guard:** `scripts/check-built-css.mjs` (dependency-free, node builtins only) asserts 7 non-arbitrary + 2 escaped-arbitrary ui-only selectors against a built app CSS, prints every missing one, and exits 1. Exit codes 0 / 1 / 2 (usage, unreadable file) are all exercised. Not wired into CI — none exists; documented in the Quality Gate above as a manual release step.
+
+**Deliberately not done here:** no component changed, no `vite.config.ts` changed, no Tailwind config added, `package.json` untouched. This also newly emitted the ambiguous `text-[var(--…)]` utilities into the app CSS, which is what made the pre-existing TRACKED item measurable — see the measurement recorded there. Two real defects are now documented there and left for the D2 audit.
+
+---
+
+## BE1 — Optional overlay text on homepage banners (2026-10-03)
+
+**The gap.** `design.md` §3.7 has specified an "optional overlay text" on hero banners since Phase 8, but there was no way for an admin to set it: PRD §8 described only image + target category + ordering, and the admin form could not ask for a headline. This adds the two missing columns so the existing design is finally authorable.
+
+**Product decision (approved by the product owner 2026-10-03).** Two optional fields per banner:
+
+| field | type | max | meaning |
+|---|---|---|---|
+| `headline` | `varchar(120) NULL` | 120 | short overlay headline |
+| `subtitle` | `varchar(255) NULL` | 255 | supporting line under the headline |
+
+**Why nullable, and what `null` means.** `NULL` is a real authorable state, not missing data: **a `NULL` headline+subtitle means "image only, no overlay"**, which is the common case. This is documented in the migration itself, per `rules.md` §6 (no nullable field without a stated reason). The alternative — `NOT NULL DEFAULT ''` — was rejected: it forces every image-only banner to carry a meaningless empty string and makes "no overlay" indistinguishable from "an overlay whose text happens to be blank".
+
+**Validation.** `sometimes|nullable|string|max:N|not_regex:/<\s*\/?\s*[a-zA-Z][^>]*>/`, shared by create and update via a new `App\Modules\Merchandising\Support\BannerOverlayTextRules` so the two endpoints cannot drift.
+
+- **HTML is rejected, not stripped.** React escapes these values on output, so a tag is not an XSS vector here — but silently stripping would store something other than what the admin typed (`<b>Sale </b>` → `Sale`), which is worse than an explicit error. This keeps `rules.md` §5 (invalid input never reaches business logic) and adds no dependency (§13).
+- **The rule matches a tag *shape*, not merely `<` and `>`.** Rejecting every `<` would break copy admins actually write — `Save <50% today` and `Only 3 left < hurry` both pass, and both are pinned by tests. `<b>`, `</b>`, `<img src=x onerror=y>` and `<script>` are all caught, the last via requiring a letter right after `<`/`</`.
+- **Trimming and empty→null are not re-implemented.** Laravel's global `TrimStrings` then `ConvertEmptyStringsToNull` middleware (in that order, both still registered in `bootstrap/app.php`) already do it. Re-implementing in `prepareForValidation` would duplicate framework behaviour and risk the two disagreeing. Consequence: `""` and `"   "` both store as `NULL`, i.e. sending an empty value clears the overlay — no delete-and-recreate needed.
+
+**Migration.** `server/database/migrations/2026_10_03_000001_add_headline_and_subtitle_to_homepage_banners_table.php` — additive only, two nullable columns, no existing column touched, no route touched. `down()` drops exactly those two. Verified reversible by invoking `up()`/`down()` directly on a throwaway SQLite file: `after migrate headline=YES subtitle=YES` → `after down() headline=NO subtitle=NO` → `after up() again headline=YES subtitle=YES`. `migrate:fresh` also re-run clean. `after()` is used for MySQL column ordering only; SQLiteGrammar has no `modifyAfter` so it is ignored there, matching the existing `add_thumbnail_path_to_assets_table` precedent.
+
+**No API Resource was added.** The banner controllers serialize the Eloquent model directly with `asset` / `target_category` eager-loaded — an existing project-wide pattern. New columns are therefore exposed automatically; the tests below are what actually pin the contract.
+
+**Exact public JSON** (`GET /api/v1/homepage-banners`, captured from a real response, not hand-written). `headline`/`subtitle` serialize **after** `updated_at`, because they are appended columns — harmless for JSON consumers, but worth knowing before someone "tidies" key order:
+
+```json
+{
+  "banners": [
+    {
+      "id": 1,
+      "asset_id": 1,
+      "target_category_id": 1,
+      "display_order": 0,
+      "is_published": true,
+      "start_at": null,
+      "end_at": null,
+      "created_at": "2026-10-03T13:08:54.000000Z",
+      "updated_at": "2026-10-03T13:08:54.000000Z",
+      "headline": "Summer laptop sale",
+      "subtitle": "Up to 40% off selected models.",
+      "asset": { "id": 1, "uuid": "…", "disk": "uploads", "path": "…", "original_name": "…", "mime_type": "image/jpeg", "size": 571403, "width": 1200, "height": 900, "alt_text": "…", "uploaded_by": null, "created_at": "…", "updated_at": "…", "thumbnail_path": "…" },
+      "target_category": { "id": 1, "name": "Laptops", "slug": "laptops", "logo_asset_id": null, "banner_asset_id": null, "description": "…", "display_order": 0, "is_published": true, "parent_category_id": null, "created_at": "…", "updated_at": "…" }
+    }
+  ]
+}
+```
+
+Both keys are always present, `null` when the banner is image only — a client never has to probe for existence. Admin payloads carry the same two fields (`GET /api/v1/admin/homepage-banners` paginated under `data`, single banner under `banner`).
+
+**Tests written first, then shown failing.** New `server/tests/Feature/Api/V1/BannerOverlayTextApiTest.php` (25 tests). First run, before any implementation existed:
+
+```
+⨯ admin creates a banner with headline and subtitle and receives them… 3.21s
+✓ admin creates a banner without overlay text and both fields come ba… 0.18s
+⨯ update changes headline and subtitle
+⨯ headline longer than 120 characters is rejected
+…
+Tests:    23 failed, 2 passed (28 assertions)
+```
+
+with the two real failure modes visible: `Failed asserting that null is identical to 'Summer laptop sale'` (field silently dropped, never persisted) and `SQLSTATE[HY000]: General error: 1 table homepage_banners has no column named headline`. The 2 that passed did so vacuously — they assert `null`, which was trivially true while the columns did not exist.
+
+Coverage beyond the brief: trimming; whitespace-only → `NULL`; exactly-120/255 accepted at the boundary; update re-enforces limits; a rejected tag never reaching the DB; `<50%` still accepted; public feed hides a *draft* banner's copy; public feed hides a published banner whose **target category was later unpublished** (the pre-existing `findPublished` rule, now pinned); publish does not disturb copy; update touches only the field sent; reorder cannot set copy. Authorization was **not** re-tested — `AdminBannerApiTest` already covers 401/403 across all eight banner endpoints via `adminBannerEndpoints()`, so duplicating it would add noise. Also extended the existing `homepage_banners table exists with the expected columns` guard, and added a `PRAGMA table_info` assertion that both columns are genuinely `NOT NULL = 0` rather than trusting a type helper.
+
+**Verification.**
+
+| check | result |
+|---|---|
+| Docker baseline before changes | 631 passed (2407 assertions) |
+| New file, first run (pre-implementation) | 23 failed, 2 passed |
+| New file after implementation | **25 passed (97 assertions)** |
+| Sibling banner suites (admin/public/service/model) | 46 passed (171 assertions) |
+| Full suite after changes | **657 passed (2512 assertions)**, +26 tests, exit 0 |
+| `migrate:fresh` on throwaway SQLite | clean |
+| Migration `up()`/`down()`/`up()` | reversible, verified |
+| `/api/v1` route count | **103, unchanged** (`routes/api.php` not modified) |
+| Frontend / component / route / seeder changes | none |
+
+**Surprise — route count is 103, not 104.** The brief expected 104. Authoritative count via `route:list --path=api/v1 --json` is **103**, and `git diff HEAD -- server/routes/api.php` is empty, so 103 is the committed baseline and BE1 provably changed nothing here. A naive `grep -c 'api/v1'` also returns 103. Recorded rather than "fixed": inventing a route to reach 104 would be wrong, and the discrepancy is in the brief, not the code.
+
+**Deliberately not done here.** No `JsonResource` introduced; no `headline`/`subtitle` on `ReviewShowcaseItem` (same shape of feature, different entity, out of scope); no seeder changes; `is_published` still not settable via `PUT` (publish stays a dedicated action); no frontend work — nothing consumes these fields yet, so this is a pure backend/API change.
+---
+
+## BE2 - products.is_featured (2026-10-04)
+
+**Decision:** approved by the product owner 2026-10-03. An admin can flag a product as **featured**; the storefront Home "Featured" section will later request only featured products. That consumer is **task B2c and is explicitly not part of this task** — B2c touches the frontend only.
+
+**Schema.** One additive column, `products.is_featured`, `boolean NOT NULL DEFAULT false`.
+
+This is deliberately the **opposite** of the BE1 decision, and the contrast is the interesting part. BE1's `headline`/`subtitle` are nullable because `null` is a meaningful third state ("image only"). A boolean flag has no third state: every product is either featured or not, so `null` could only ever be a bug or an oversight. `default false` also backfills every existing row to not-featured with no data migration and no window in which a product is neither. `rules.md` §6 ("no nullable field without a documented reason") is satisfied by not being nullable at all.
+
+**Index decision: composite `(is_published, is_featured)`, not a lone `is_featured` index.** The one query that matters is the storefront "published AND featured" selection, and `findPublished()` always appends `where('is_published', true)` on top of the shared filter builder — so `is_featured` is never queried alone publicly. A lone `is_featured` index would be picked by the optimizer and would still have to fetch every featured row to discard the unpublished ones; the composite resolves both equality predicates in one index seek. By the **leftmost-prefix rule** the composite also *subsumes* the pre-existing single-column `products_is_published_index` (still fully serves `WHERE is_published = 1`), which is asserted rather than merely claimed:
+
+```
+after migrate      is_featured=YES  composite_index=YES  is_published_index=YES
+after down()       is_featured=NO   composite_index=NO   is_published_index=YES
+after up() again   is_featured=YES  composite_index=YES  is_published_index=YES
+```
+
+The original `is_published` index is left in place on purpose — the migration is additive, and dropping a live index as a side effect of adding a column is not a change worth making silently. Composite indexing is not a foreign pattern here: `architecture.md` §6 already specifies one for `ServiceBooking(scheduledSlotStart, scheduledSlotEnd)`.
+
+**Validation.** `is_featured => ['nullable','boolean']` on create and `['sometimes','boolean']` on update — the project's existing boolean style (`is_published`, `is_default`). `sometimes` (not `nullable`) on update because the column is NOT NULL, so an explicit `null` is a clean 422 rather than a database error. Update accepts both `true` and `false`, so one endpoint features and unfeatures. In the service the cast is `array_key_exists` + `(bool)`, **not** `isset()` — `isset()` treats `false` as absent and the product could then never be un-featured.
+
+**`?featured=` filter semantics.** `1`/`true` → only featured; `0`/`false` → only non-featured (symmetric, so the filter always narrows on the value given); **absent or empty → no filtering at all**.
+
+Two parsing decisions worth recording:
+
+- **Normalisation uses `filter_var(..., FILTER_VALIDATE_BOOLEAN)`, not the raw query value.** Laravel's `boolean` rule accepts only `[true, false, 0, 1, '0', '1']`, so the string `"true"` would be rejected outright — despite being the obvious thing for a client to send. `FILTER_VALIDATE_BOOLEAN` is already this codebase's boolean idiom (`SettingService` uses the same constant), so this reuses existing machinery instead of inventing a parser. `FILTER_NULL_ON_FAILURE` then routes junk into the normal `boolean` rule, producing an ordinary Laravel 422 with a `featured` field error.
+- **An invalid value must never degrade to "unfiltered".** Dropping an unparseable value would return the *entire* catalogue to a client that asked for featured-only, and it would never know. A loud 422 is the safe failure mode, and is asserted directly.
+
+**`?featured=` (empty) is treated as absent, not as false** — a client that forgot to interpolate a value would otherwise silently flip from "featured only" to "everything except featured".
+
+**Two real bugs the tests caught, both worth remembering.**
+
+1. **`Builder::when()` passes the *condition* as the callback's second argument, not the filter's value.** The first version was `->when(array_key_exists('featured', $filters), fn ($q, $featured) => $q->where('is_featured', $featured))`. The condition is a bool, so `$featured` was bound to `true` on *every* call — which quietly turned `?featured=0` into "featured only". It is now `fn ($query) => $query->where('is_featured', (bool) $filters['featured'])`, reading the value from the captured array. (The existing `brand_id` clause is unaffected only because there the condition *is* the value.) The symptom was caught by the `featured=0` test returning 2 instead of 1.
+2. **`$request->merge()` does not write to the query bag when `Request::isJson()` is true.** `getInputSource()` returns the JSON bag instead, so merging the normalised value silently failed to overwrite the raw query string for exactly the clients that matter — any caller sending `Content-Type: application/json`, which is every real API consumer and also Laravel's own `getJson()` test helper. `FeaturedProductFilter::normalize()` now **returns** `?bool` and the controller assigns it into the filter array explicitly, which sidesteps input-source ambiguity and keeps "absent" cleanly distinguishable from "false".
+
+**Publication is untouched.** `findPublished()` still appends `where('is_published', true)` after the shared filter builder, so a featured-but-unpublished product is unreachable via the featured filter, the unfiltered list, **and** the by-slug detail route (404). Featured and published are independent on the write side too: featuring an unpublished product does not publish it, and `publish()` does not change the flag.
+
+**Exact public JSON** — `GET /api/v1/products?featured=1`, captured from a real response. `is_featured` serialises **after `updated_at`** (appended column) and is a real JSON `true`, not `1`:
+
+```json
+{
+  "current_page": 1,
+  "data": [
+    {
+      "id": 1,
+      "name": "Latitude 5550",
+      "slug": "labore-sed-ut",
+      "sku": "LAT-5550",
+      "description": "Aut consequatur aut at laboriosam placeat quo beatae nesciunt unde vel.",
+      "price": "1899.50",
+      "stock_quantity": 75,
+      "brand_id": 1,
+      "is_published": true,
+      "created_at": "2026-10-04T15:37:41.000000Z",
+      "updated_at": "2026-10-04T15:37:41.000000Z",
+      "is_featured": true,
+      "brand": { "id": 1, "name": "Dell", "slug": "ut-fugit", "logo_asset_id": null, "is_published": false, "created_at": "…", "updated_at": "…" },
+      "categories": [ { "id": 1, "name": "Laptops", "slug": "laudantium-ad", "logo_asset_id": null, "banner_asset_id": null, "description": "…", "display_order": 0, "is_published": false, "parent_category_id": null, "created_at": "…", "updated_at": "…", "pivot": { "product_id": 1, "category_id": 1 } } ],
+      "images": [ { "id": 1, "product_id": 1, "asset_id": 1, "display_order": 0, "created_at": "…", "updated_at": "…", "asset": { "id": 1, "uuid": "…", "disk": "uploads", "path": "…", "original_name": "…", "mime_type": "image/jpeg", "size": 1925662, "width": 1200, "height": 900, "alt_text": "…", "uploaded_by": null, "created_at": "…", "updated_at": "…", "thumbnail_path": "…" } } ]
+    }
+  ],
+  "first_page_url": "http://localhost:8000/api/v1/products?page=1",
+  "from": 1,
+  "last_page": 1,
+  "last_page_url": "http://localhost:8000/api/v1/products?page=1",
+  "links": [ { "url": null, "label": "&laquo; Previous", "page": null, "active": false }, { "url": "http://localhost:8000/api/v1/products?page=1", "label": "1", "page": 1, "active": true }, { "url": null, "label": "Next &raquo;", "page": null, "active": false } ],
+  "next_page_url": null,
+  "path": "http://localhost:8000/api/v1/products",
+  "per_page": 15,
+  "prev_page_url": null,
+  "to": 1,
+  "total": 1
+}
+```
+
+The detail route (`GET /api/v1/products/{slug}`) returns the same object under a `product` key, with the same `is_featured` boolean. Admin list is paginated identically with the flag under `data`; admin detail under `product`.
+
+**Tests written first, then shown failing.** New `server/tests/Feature/Api/V1/ProductFeaturedFlagApiTest.php`, 38 tests. First run, before any implementation:
+
+```
+⨯ admin creates a product with is_featured true                        3.70s
+⨯ public featured filter returns only published and featured products 0.23s
+⨯ an invalid featured query value returns 422 with a field error      0.24s
+…
+Tests:    37 failed (18 assertions)
+```
+
+All 37 failed with only 18 assertions executed — the flag simply did not exist, so most assertions never got past setup. Representative causes: `Failed asserting that null is identical to true` (the field was silently dropped) and `QueryException` on `is_featured`.
+
+Authorization was **not** re-tested: `AdminProductApiTest` already covers 401 (guest) and 403 (customer) across every admin product endpoint. Coverage beyond the brief includes `?featured=true` as well as `=1`; `featured=0` symmetry; empty-value handling; unpublish/publish round-trips against the featured feed; composition with brand, category (including a parent category widening scope), search, sort and pagination meta; an explicit assertion that junk does **not** silently fall back to an unfiltered list; that a rejected create writes no row; that `is_featured` cannot flip publication; that the raw DB value stays `1` while the cast is a real bool; the composite index's existence and column order via `PRAGMA`; the `NOT NULL` + `default '0'` schema shape via `PRAGMA table_info` and `sqlite_master`; and that there is deliberately no server-side cap on featured products (25 featured is fine — the storefront decides how many to show).
+
+**No N+1.** There is no query-count test anywhere in this repo (no `getQueryLog`, `DB::listen` or `assertQueryCount` precedent), so rather than invent a new testing pattern it was verified with a throwaway script and then deleted: **4 queries at 1, 5 and 10 rows** (`products` ×2 for count+page, `categories` ×1, `product_images` ×1) — completely flat as the page grows, because the filter reuses `buildFilteredQuery()`'s existing `with(['brand','categories','images.asset'])`. The `featured` filter adds no query of its own.
+
+**Verification.**
+
+| check | result |
+|---|---|
+| Docker baseline after BE1 | 657 passed |
+| New file, first run (pre-implementation) | 37 failed (18 assertions) |
+| New file after implementation | **38 passed (126 assertions)** |
+| Full suite after changes | **695 passed (2641 assertions)**, +38 tests, 0 failed |
+| Migration `up()`/`down()`/`up()` | reversible; composite index dropped and recreated |
+| `migrate:fresh` on throwaway SQLite | clean, exit 0 |
+| `/api/v1` route count | **103, unchanged** |
+| Query count at 1 / 5 / 10 rows | 4 / 4 / 4 — no N+1 |
+| Frontend (`apps/`, `packages/`) changes | none |
+
+**Deliberately not done here.** No frontend, no `api-client` module and no admin form — B2c consumes all of that. No `JsonResource`; products already serialise the model directly, and BE2's field therefore needed no response-shaping code at all. No seeder changes (`rules.md` §6): products are created through the admin panel, never seeded with hard-coded merchandising data. No new routes and no new query parameters other than `featured`. No `is_featured` on `services` — a service is not a product and the storefront does not feature them the same way.
+
+---
+## B2b2 - Home "Shop by Category" / "Shop by Brands" bands (2026-10-04)
+- Both Home taxonomy sections rebuilt as `Marquee` bands (reference: centered `h2`, one auto-scrolling row, hover-paused); Shop/category pages keep the scrollable-row/grid layout.
+- Items come only from the API, in API order, each a real `<Link>` (`/shop/category/:slug`, `/shop/brand/:slug`) instead of `ClickableArea`'s `href="#"` - crawlable and shareable.
+- `MARQUEE_MIN_ITEMS = 6` (defined in the route): >= 6 renders the Marquee with its WCAG 2.2.2 pause control, below that a static centered wrapping row with no motion and no pause button.
+- Category band filters `parent_category_id === null` from the shared `queryKeys.categories` cache rather than changing what the header nav fetches; brand band shows all returned brands.
+- design.md §3.9 states kept: skeleton pending, `ErrorState` + retry refetch, whole section (heading included) omitted when empty. One `h1`/`main` preserved; band items carry no `id`/mount effect because `Marquee` duplicates children (asserted).
+- `packages/ui`: `EmptyState:23` + `ErrorState:24` `text-[var(--font-size-lg)]` -> `text-[length:var(--font-size-lg)]` (was compiling to color). Nothing else in packages/ui.
+- Two `@types/react` copies (app 19.2.18 / packages/ui 18.3.31) make an element array unassignable to `Marquee` children, so items are wrapped in a `<>` - no DOM node added, -50% loop geometry intact.
+- Verify: `_index.test.tsx` 13 tests (8 red first) + 6 importer suites = 99 passed / 7 files; packages/ui EmptyState+ErrorState 8 passed; build OK; check-built-css 9/9; lint 21 warnings, 0 errors.
+- DECISION REQUIRED: PRD §7.2 wants two levels in this band, spec + reference show top level only. PRD §7.1 wants brand logos here, reference chips are text-only. Bands also sit inside the page container, not full-bleed as in the reference.
+
+---
+## CH1 - Single @types/react across the workspace (2026-10-05)
+- `packages/ui` + `packages/api-client` declared `"@types/react": "^18.3.0 || ^19.0.0"`, so npm took the lowest match and nested 18.3.31 under `packages/ui` while the apps took hoisted 19.x. Both narrowed to the apps' `^19.2.17` / `@types/react-dom ^19.2.3` (runtime `peerDependencies` stay `^18.3.0 || ^19.0.0` - a peer range is a compatibility claim, not an install input). Now one hoisted copy: `npm ls` dedupes all 6 dependents, 1 on disk, no `npm dedupe` needed. Both workarounds removed, behaviour unchanged: `Marquee`'s `DECORATION_PROPS` typed spread → plain `inert` prop (React 19 types declare it; `inert` still asserted twice in its suite), and `BandRows` passes `items.map(...)` straight to `Marquee`, so `Children.count(children)` counts real items instead of always reporting 1 fragment.
+- Verify: `packages/ui` `tsc --noEmit` + Marquee 23; storefront build (tsbuildinfo cleared) + Home route 13; admin build - all clean. `BookingService::assertNoOverlappingBooking` re-checked for BE3 leftovers: exactly `notCancelled()`, `overlappingWith()`, `lockForUpdate()`, `first()`, no duplicated `where()`.
+- DECISION REQUIRED: the lock diff is large (+2885/-477) but pre-existing, not from CH1 - the committed lock was already stale (235 entries vs 397 resolved; `@babel/core`/`semver` absent), so any install rewrites it. CH1's own delta is only hoisted `@types/react` 19.2.18→19.3.0, the two narrowings, and the deleted `packages/ui/node_modules/@types/react` block. Reconciling the rest deserves its own task.
+
+---
+## BE3 - Public availability endpoint (2026-10-05)
+- `GET /api/v1/services/{slug}/availability?date=YYYY-MM-DD[&mode=list|nearest]`, public (PRD §5.1) and rate limited by a named `service-availability` limiter keyed IP + slug. +1 route: 103 → **104**. No frontend, no booking-creation change beyond the delegation below.
+- **Thin controller, no re-implemented rules.** New `ServiceAvailabilityService` composes the two existing sources of truth: `SlotGenerationService` decides *which windows exist* (business hours, holidays, buffer, minimum notice); `SlotHoldService::isWindowFree()` + the booking overlap predicate decide *which are taken*.
+- **DRY fix (`rules.md` §3/§8).** The "is this slot still bookable" rule existed only as a private method in `BookingService`, so a read endpoint would have had to restate it. Promoted to named scopes `ServiceBooking::scopeNotCancelled()` + `scopeOverlappingWith()` (mirroring `SlotHold`), and `assertNoOverlappingBooking()` now delegates to them - identical SQL, identical `lockForUpdate()`, identical exception, **no behavioural change**; proven by the untouched `BookingServiceTest`/`SlotHoldServiceTest` suites.
+- `nearestAvailableSlot()` gained an **optional** trailing `?callable $isBookable` (defaults null, so its existing behaviour and tests are untouched), letting Phase 7's nearest-slot suggestion reuse the day-walking loop instead of duplicating it. Default (no filter) behaviour is unchanged.
+- **Date window is configurable, not a constant** (`rules.md` §6): new seed-style migration `2026_10_05_000001_seed_booking_max_advance_days_setting.php` sets `booking_max_advance_days = 60` as `type=integer`; `ServiceAvailabilityRequest` reads it via `BusinessSetting::getValue()`, so a past date, a bad `Y-m-d`, or a date past the horizon is a 422 with a `date` field error and an unknown `mode` a 422 with `mode`.
+- Response `{service: {id, slug, duration_minutes}, date, timezone, slots: [{start, end}]}`; timestamps `toIso8601String()` (offset always present, never a bare `Z`). `timezone` reported `config('app.timezone')` at this stage because the generator did no conversion of its own — **resolved by TZ1**, which reports the business zone instead.
+- Read-only: no hold is attempted (asserted), so browsing availability cannot lock the slot the customer is looking at. Missing and unpublished slugs return a byte-identical `{"message":"Not Found"}` 404, so an unpublished service cannot be probed.
+- Verify: `ServiceAvailabilityApiTest.php` 24 tests (22 red first) / 79 assertions; scoped `Scheduling` + `PublicServiceApiTest` + BE3 = **121 passed / 395 assertions**; `migrate:fresh` clean; `up → down → up` on throwaway SQLite = `ROW_BACK=60 type=integer`; route count 104; Pint clean. Full suite deliberately not run (per-task scoped only).
+- DECISION REQUIRED: `rules.md` §3 wanted this rule in one place, which required `BookingService` to delegate to the new scopes rather than keep its private copy - accepted here as behaviour-identical, but it is a touch to the booking write path and is flagged rather than assumed. ~~`timezone` is reported as the single app zone (`UTC`) because no per-tenant or per-service timezone exists anywhere in the schema~~ — **closed by TZ1** below: a `business_timezone` setting now supplies that zone. `mode=nearest` is inferred from Phase 7's "nearest-slot suggestion logic" line, not from an explicit PRD/SRS requirement. Search range for `nearest` is a fixed 14 days, bounded by `booking_max_advance_days` only when that is smaller.
+
+## TZ1 - Configurable business timezone (2026-10-06)
+- **Interpretation moves out of the app zone into a setting, storage stays UTC.** New `business_timezone` setting seeded to `Asia/Karachi` (`2026_10_06_000001_seed_business_timezone_setting.php`, `type=string`, reversible); `BusinessClock::timezone()` is the single accessor (`App\Modules\Scheduling\Support`), falling back to `Asia/Karachi` if the row is missing so the bug returns to the intended default rather than to UTC. `UpdateBusinessSettingRequest` validates it against `DateTimeZone::listIdentifiers()`, so a non-IANA value is a 422 rather than a silently wrong schedule.
+- **What becomes business-local:** business-hour wall times, weekday lookup, holiday date matching, "today", the `booking_max_advance_days` horizon, and availability rendering. Minimum notice and service buffer stay plain duration arithmetic. Slot generation still returns UTC instants, and `BookingService`/`SlotHoldService` overlap and hold predicates are byte-for-byte untouched — only *reading a business day* is zone-dependent.
+- **Booking input round-trips an explicit offset.** `StoreBookingRequest` normalises a returned `+05:00` timestamp back to UTC before persistence, so the customer's chosen wall-clock time survives; overlap detection is unchanged.
+- **Test-first.** `BusinessTimezoneTest.php` 13 tests / 47 assertions (13 red first). Existing Scheduling tests were written when "09:00" meant 09:00 UTC; their assertions are correct statements about a UTC business, so instead of rewriting them the suite default is pinned to UTC in `tests/TestCase.php` (`setUp`, guarded by `Schema::hasTable`), and TZ1's own `beforeEach` overrides it to `Asia/Karachi`.
+- Verify: scoped `Scheduling` + `PublicServiceApiTest` + `ServiceAvailabilityApiTest` + BE3 + TZ1 = **134 passed / 442 assertions**; migration `Ran → Pending → Ran` on throwaway SQLite; route count **104** (unchanged); Pint clean on all 13 changed files.
+- DECISION REQUIRED: booking endpoints (`BookingController` store/index/show) still serialize `ServiceBooking` directly, so `scheduled_slot_start`/`end` are returned as UTC instants while the availability endpoint is now business-zoned. That inconsistency is a serialization-policy decision, not a bug in this task, so it is flagged rather than changed. Notification/email copy contains no times at all, so nothing human-facing needed changing there.
+- DECISION REQUIRED: only the seeded default is Asia/Karachi. `php artisan config:cache` caches `app.timezone` but the business zone is read from the DB per request, so admin timezone changes take effect immediately without a redeploy — worth confirming that is the desired behaviour, since it means no deploy is needed to move the business.
+- **TZ1-fix (2026-10-06): `business_timezone` read once per request.** Throwaway measurement first: **23** reads of `business_timezone` in one 8-slot availability request (26 `business_settings` selects; `BusinessSetting::getValue` caches nothing per request - plain `where()->first()` each call). `BusinessClock` now memoises the resolved zone (process-static so every instance in a request shares it) in `timezone()`; the memo is cleared on **any** `BusinessSetting` save (`booted()` -> `saved`) and at the start of every test (`tests/TestCase::setUp`), so a change is honoured on the next request and no memo leaks across tests.
+- **TZ1-fix proof:** 2 new tests in `BusinessTimezoneTest` - `business_timezone is read from the database at most once per request` (`DB::listen` == **1**) and `a business timezone changed between requests is honoured on the next request` (Karachi -> London via Eloquent instance save -> `+01:00` on the next request). Post-memo measurement: **1** timezone read / **4** `business_settings` selects per request (the other 3 are the distinct `booking_max_advance_days` / `service_buffer_minutes` / `min_booking_notice_minutes` keys).
+- **TZ1-fix Verify:** `BusinessTimezoneTest` + `ServiceAvailabilityApiTest` + `tests/Feature/Modules/Scheduling` + Pint-touched `BannerOverlayTextApiTest` + `ProductFeaturedFlagApiTest` = **194 passed / 650 assertions** (0 failed); Pint fix pass over all 37 in-scope files - 8 style fixes, all in scope, second pass PASS; route count **104** (unchanged).
+## B2c - Storefront Home merchandising rows (2026-10-06)
+- **Hero stays on the generic Carousel.** Each banner slide is a real `/shop/category/{target_category.slug}` anchor (crawler/middle-click) with `onSlideClick` for in-app navigation; headline/subtitle render as plain `<p>`s in a frosted card over a left-to-right dark scrim (`from-[var(--color-surface-dark)]/70 via-[var(--color-surface-dark)]/40 to-transparent`). First slide `loading=eager` + `fetchpriority=high`, later `lazy`; image-only banners render no overlay (no empty card), an empty endpoint omits the section, and copy is never a heading - the single page `h1` stays the sr-only page title; all states covered (skeleton/error+retry/empty).
+- **api-client + ui plumbing.** `HomepageBanner.headline/subtitle: string | null`; `Product.is_featured` + `getProducts({featured, sort: "newest"})`; `ClickableArea` optional `href` that never intercepts ctrl/cmd/shift/alt/middle clicks and only routes plain left clicks when `onActivate` exists; `ProductCard` `href` on both cards; `Carousel` honours `slide.href`, gates the active-slide anchor to `onSlideClick|enableLightbox`, and gains `autoSlide` (default true; `false` = WCAG 2.2.2 Pause for readable grids).
+- **New Arrivals** = `queryKeys.productsNewArrivals`, `getProducts({sort: "newest", perPage: 8})`, reference 3-col grid (`grid-cols-1 sm:grid-cols-2 lg:grid-cols-3`), `/product/:slug` links, `View all` -> `/shop`; skeleton 3 matches the reference's single 3-card row.
+- **Featured Products** = `queryKeys.productsFeatured`, `getProducts({featured: true, perPage: 8})`, one generic Carousel (`autoSlide={false}`) grouping products 4-per-slide in a `grid-cols-2 gap-[var(--space-5)] lg:grid-cols-4` grid; carousel region named `"Featured products"`. Query keys moved from route literals into `hooks/query-keys.ts`.
+- Verify: ui ClickableArea(6)/ProductCard/Carousel = **39 passed**; storefront 7 handler-linked suites = **114 passed** (Home 13 -> 28); storefront build + `tsc -b` clean (tsbuildinfo cleared), `check-built-css` 9/9, scrim utility + escaped `lg:grid-cols-4` present in built CSS; lint warnings 21 (unchanged baseline, incl. pre-existing `meta()` export).
+- DECISION REQUIRED: the reference row is a full-width **coverflow** - peeking neighbours, per-slide scale/opacity, a centre-spotlight caption and far-out chevrons - and the shared Carousel exposes none of those capabilities; rendered as a standard 4-up carousel, styling left to the V1 visual pass. `sort=newest` is a no-op server-side (repository default is already `created_at DESC`), so it is safe to keep sending until a later BE pagination task adds an explicit branch.
+
+## B2d-1 - Home "category strips" (2026-10-06)
+- **Storefront only, test-first, no backend change.** New `apps/storefront/app/components/home/CategoryStrips.tsx` (+ colocated test), placed in `_index.tsx` directly AFTER `<FeaturedProducts />`, BEFORE `<PopularServices />` (order now matches the reference h2 sequence). Up to **4 strips**, one per published **top-level** category (`parent_category_id === null`), in the API's `display_order` order. Each strip: `h2` with the category name (never another `h1`), a `View all` link to `/shop/category/{slug}`, and up to **4** products as `ProductCard` (`/product/{slug}`) in a plain `grid-cols-2 lg:grid-cols-4` grid - **explicitly NOT a Carousel** (the reference renders chevron scrollers; the task overrides).
+- **Data only from the API.** Categories reuse the shared `queryKeys.categories` (no second categories request; `TAXONOMY_STALE_TIME`); one products query per strip via `useQueries`, new key `queryKeys.productsByCategory(categoryId)`, `getProducts({categoryId, perPage: 4})` - `api-client` needed no change (subcategory scope is the server's `getProductScope`). States: while the shared categories query is **pending or errored the block renders nothing** (the Shop by Category band owns those two states on the same key - no duplicated skeleton/error); a strip with no products is hidden entirely, no strip left -> whole block absent; per-strip `Loading {name} products` skeleton and `ErrorState` + retry on products error only; each strip a labelled `<section aria-labelledby>` its `h2`.
+- Verify: **36 passed** (8 `CategoryStrips.test.tsx` + 28 `_index.test.tsx`, 0 failed), incl. shared-categories-FAILING -> renders nothing, a NON-VACUOUS empty-block test (waits for every skeleton to clear, then asserts absence; proven by a one-shot "render empty strip" mutation that failed under mutation and passed on revert), non-flaky dual-strip request wait (`waitFor` each `category_id`), and the `_index` categories-error retry test restored to the single shared `Categories unavailable` copy / single `Try again` (B2d-1-fix widening reverted). Build 0, `tsc -b` 0 (tsbuildinfo cleared), prerender set unchanged (/, /shop, /services, /login, /register), `check-built-css` **9/9**, lint **21 warnings / 0 errors** (baseline). B2d-1-fix review: PASS.
+
+## B2d-2 - tidy Home "Popular Services" (2026-10-07)
+- **Storefront + one small `@ecommerce/ui` change, test-first, no backend change.** New shared key `queryKeys.servicesHomepage` replaces the inline `["services","homepage"]` in `_index.tsx` - no behaviour change.
+- **CAP.** `PopularServices` shows at most `POPULAR_SERVICES_COUNT = 3` (named constant + comment): slice happens after the query (keeps API order) because `getServices` has no `perPage`. Empty slice -> section absent (design.md 3.9). Price range (min-max) and Book Service (`/booking`, preselect is B9) untouched.
+- **REAL LINK.** `ServiceCard` gains optional `href` for the details action exactly like ProductCard/ClickableArea (B2c): real anchor when given, plain left click routes in-app via `onViewDetails`, ctrl/cmd/shift/alt/middle clicks never intercepted, no `id`. Only consumer `_index.tsx` passes `href="/service/{slug}"`; no href keeps the old `href="#"` placeholder (other consumers unaffected - there are none).
+- **Tests (red, then green).** ui ServiceCard: href -> real anchor, modified clicks left to the browser (defaultPrevented stays false), no-href old behaviour, no link when neither. `_index`: 5 services -> exactly the first 3 in API order, each details link has `/service/{slug}`, plus new dedicated loading-skeleton / error+retry / empty->absent tests. **13 ui + 33 `_index`** (+ ClickableArea 6, CategoryStrips 8).
+- Verify: tsbuildinfo cleared, storefront build 0 (incl. `tsc -b`), **admin build 0** (shared ui changed), prerender set unchanged (/, /shop, /services, /login, /register), `check-built-css` **9/9**, storefront lint **21 warnings / 0 errors** (ui package has no lint script - pre-existing).
+
+## B2e-1 - Home "Customer Reviews" showcase (2026-10-07)
+- **Storefront only, test-first, no `@ecommerce/ui` change, no backend change.** New key `queryKeys.reviewShowcaseHome`; `ReviewShowcase` rendered in `_index.tsx` after `PopularServices` (last section, A3.8), page-1 once, items in API order.
+- **LAYOUT.** ui Carousel `aria-label="Customer reviews"` with generic grouping: `window.matchMedia` hook groups 3 per slide at lg+, 2 at sm, 1 below (fallback 3); a single slide sets `autoSlide={false}`. No `enableLightbox`/`onSlideClick`/`href`.
+- **EACH item** = one `<button type="button">` (`aria-label="Enlarge: {alt}"`) + `<img>`: `thumbnail_path ?? path`, width/height when non-null, `loading="lazy"`, `alt = alt_text ?? caption ?? "Customer review screenshot"`, caption row only when non-null. Lightbox = ui `Modal` (kept mounted, `isOpen` toggling so its own Esc/overlay/return-focus work) showing the ONE item's full `asset.path`.
+- **STATES.** pending -> `role="status"` skeleton "Loading customer reviews"; error -> `ErrorState` "Customer reviews unavailable" + "Try again" (refetch only this query); empty -> whole section absent. **Nothing hard-coded** - no names/quotes/avatars/stats ("1M+/150+/5 Star" PRD-forbidden and tested absent).
+- **Tests (red, then green).** New `ReviewShowcase.test.tsx` (9): grouping 3,3,1 / 7-per-view, alt fallback chain, strip thumb-vs-full + lightbox full path, modal open + Escape + return-focus, skeleton, error+retry, empty->absent (non-vacuous), forbidden strings. `_index` +2: show case last, exactly one `/review-showcase` request. Only storefront changed.
+- Verify: tsbuildinfo cleared, `tsc -b` 0, storefront build 0, prerender set unchanged **and prerendered Home contains no review data**, `check-built-css` **9/9**, storefront lint **21 warnings / 0 errors** (unchanged). Some tests stub `matchMedia` via `vi.stubGlobal` (jsdom has none), mirroring `_index.test.tsx`.
+
+- DEV-SEED (local demo data for visual check) deferred to the final visual pass; local dev run + demo seed to be set up then.
+
+## ASSET-URL - every image URL usable from the browser (2026-10-07)
+- **Backend, test-first.** `Asset::$appends = ['url','thumbnail_url']` so serialized JSON ships the resolved URLs (`{diskUrl}/{path}`) alongside `path`/`thumbnail_path`; `AdminAssetController` already used the accessors. New `AssetUrlApiTest` **7 passed / 31 assertions** across product images, product detail, banner, review showcase, category logo+banner, brand logo, and url-derived-from-config.
+- **api-client.** `Asset` type gains `url: string` + `thumbnail_url: string | null`; fixtures updated in homepage-banners/review-showcase tests (37 passed).
+- **Frontend.** All `<img src>` uses switch to `asset.url` / `thumbnail_url ?? url`: ui ProductCard + BrandCard/CategoryCard/CategoryBanner, storefront Home hero, ReviewShowcase strip (thumb, falls back to full) + lightbox (full url). Final grep ZERO `asset.path`/`thumbnail_path` as img src.
+- Verify: 4 ui + 4 storefront + 3 api-client test files green, `tsc -b` 0, storefront + admin builds 0, prerender set unchanged, `check-built-css` **9/9** both, storefront lint **21 warnings / 0 errors**.
+
+## DISCOUNT-1 - product sale/discount price (2026-10-07)
+- **Backend, test-first.** Additive nullable `products.compare_at_price` (`decimal(10,2)` after `price`, down() drops it); validation mirrors price (`nullable, numeric, min:0`) and `after()` enforces **strictly greater than the selling price** at create and update (update validates against the EFFECTIVE new-or-stored pair, so raising price above a stored compare-at is also a 422); `null`/`''` clears. `discount_percent` is computed and appended by the Product model (round whole percent, null when absent/at-or-below) so it rides every payload with zero response-shaping code. Selling price stays the only price cart/checkout/orders use (OrderApiTest-style totals assert). New `DiscountProductApiTest` **10 passed / 57 assertions** (9 red first); scoped regressions 119 passed / 472 assertions; Pint clean.
+- **Frontend.** api-client `Product.compare_at_price/discount_percent`; ui ProductCard now reads `product.discount_percent` (server-computed) and renders `<s>` with sr-only "Original price:" + `-N%` badge (design.md 3.2, no card-height growth); MSW fixture id 11 carries a real discount; Home/CategoryStrips stay green. Verified (WishlistApiTest's "full eager-loaded shape" + WishlistService `list()`): the wishlist payload embeds the full Product object at `wishlist.N.product`, so discount fields ride list, detail, **wishlist**, cart-product, and admin payloads.
+- Docs: PRD §4 module-1 bullet + Decision #21; SRS §5 product-payload note.
+- Verify: api-client 210 + ui 199 + storefront 43 targeted passed, `tsc -b` 0 (tsbuildinfo cleared), storefront + admin builds 0, prerender set unchanged, `check-built-css` **9/9**, storefront lint **21 warnings / 0 errors**. No commit.
+
+## BE4 - product list filters + per_page cap + DISCOUNT-1 cleanup (2026-10-07)
+- **Part A cleanup.** Wishlist payload DOES embed the Product (WishlistService eager-loads `product.brand/categories/images`, real path `wishlist.N.product`) — DISCOUNT-1's docs said otherwise; corrected SRS §5 (wishlist back on the payload list) + phases entry, and `DiscountProductApiTest` now asserts both discount fields at `wishlist.0.product`. Grep: zero `compareAtPrice`/`discountPercent` remnants. SRS has a single "Product payloads" bullet.
+- **Backend, test-first.** New `ProductListFiltersApiTest` **16 passed / 45 assertions** (14 red first): `min_price`/`max_price` (numeric `>=0`, inclusive on `price`, `max<min` and junk → 422 field errors), `in_stock` (1/true/0/false, `1` → available stock `> 0` where available = `stock_quantity` minus active cart holds — `StockHoldService::availableStock()` mirrored as a correlated subquery, `0` → available `== 0`), composition (category scope, brand, search) and unpublished-never-leaks each verified. `PerPage::fromRequest` caps `per_page` to 1..48 on `/products` + `/services` (48 = API limit constant); additive index on `products.price`.
+- **api-client.** `getProducts` gains `minPrice`/`maxPrice`/`inStock` (1/0 wire format like `featured`, omitted when unset) + `getProductBySlug`/`getCategoryBySlug`/`getBrandBySlug` with shapes verified against the controllers; exported from index.ts.
+- Verify: scoped backend **77 passed / 323 assertions** (+16 new), api-client catalog 38, Pint clean, `tsc -b` storefront clean, builds + `check-built-css` 9/9, lint 21 warnings. No commit.
+
+## B3-1 - /shop shared ProductListing + Pagination/Breadcrumb (2026-10-08)
+- **Step 0:** shop routes were placeholder hard-coded loaders; SiteHeader search linked nowhere; `packages/ui` lacked Pagination/Breadcrumb; MSW had no by-slug/category/brand/price/in_stock; query-keys lacked shop entries; api-client lacked by-slug fns; root Layout already renders `<Meta/>`.
+- **ui (test-first).** New `Pagination` (aria-current, prev/next, ellipsis, disabled) + `Breadcrumb` (nav + aria-label), exported from index.ts: 18 tests.
+- **MSW/setup.** `setProductsSource()` reset per test, `productRequests` (full URLSearchParams) + `callCounts.reset()`, min/max price, `in_stock`, `GET /categories/:slug` + `/brands/:slug` (404 `{message:"Not Found."}`), `server.listen({onUnhandledRequest:"error"})`.
+- **Storefront (test-first).** `useListingParams` (applyListingPatch: any FILTER_KEYS resets page; serialize order search/min_price/max_price/in_stock/brand/sort/page, defaults omitted; 13 tests), `ListingFilters` (10), `ProductListing` (11): products query gated on category/brand success, `keepPreviousData`, `perPage:12`, resolutionFailed -> query error -> !data (whole-page skeleton, no h1) -> listing; sticky aside + Modal filters, aria-live count, one h1; routes rewritten thin (no loader/meta/fallback, title via React 19 hoisting).
+- **Title fix.** Multi-child `<title>{a} | {b}</title>` prerendered EMPTY; template literal `<title>{`${pageTitle} | ${siteConfig.name}`}</title>` works - prerendered /shop now `Shop | TechFix`, still skeleton-only (no h1/no products).
+- Verify: shop 34 + scoped 6 files **94 passed**, ui **217 passed** (24 files), `tsc -b` 0, storefront + admin builds 0, prerender set unchanged (/, /shop, /services, /login, /register), `check-built-css` **9/9**, storefront lint **16 warnings / 0 errors** (down from 21 - shop `meta()` exports removed). No commit.
+
+## B3-2 - Product detail page (2026-10-10)
+- **Step 0:** Product payload has sku/description/images[].asset/brand/categories[]/stock_quantity/compare_at_price/discount_percent (no rating fields - ratings omitted); MSW had NO `GET /products/:slug` -> added it (404 `{message:"Not Found."}`) with 4 detail fixtures (3-image discounted 2-level-category, out-of-stock, single-image no-category, no-image); the SiteHeader search->`/shop?search=` test already existed (no code/test change needed); ProductCard's price block was cleanly extractable.
+- **ui (test-first).** New `PriceTag` (own file + colocated test, exported) renders the selling price, plus (only when `discount_percent` is non-null) the `<s>` compare-at with sr-only "Original price:" and the `-N%` badge; `ProductCard` now consumes it - existing ProductCard tests unchanged and green.
+- **Storefront, test-first.** New `components/product/ProductDetail.tsx` (+14-test suite) with loading skeleton / 404 (noindex + `/shop` link + title) / `ErrorState` + "Try again"; TanStack Query via `queryKeys.productBySlug` + shared `queryKeys.categories`; deepest-category breadcrumb (falls back Home>Shop>name when categories error/no category); exactly one h1; gallery (thumbs with aria-label/current/pressed, `url`/`thumbnail_url` only, eager+high main, lazy thumbs, neutral no-image placeholder); brand link; SKU; PriceTag; server stock badge; quantity `Input` clamped to [1, stock_quantity] and disabled out of stock; Add to Cart + wishlist rendered DISABLED (B4 passes the two optional handlers); description plain text `whitespace-pre-line` (no innerHTML). Route file thin (no loader/meta/fallback).
+- Verify: ProductDetail 14 + SiteHeader + ProductListing + _index = **91 passed**; ui ProductCard+PriceTag **20 passed**; one-shot mutation (thumbs `images.length > 1` -> `> 0`) failed the single-image absence test then reverted; tsbuildinfo cleared, `tsc -b` **0**, storefront build **0**, admin build **0**, prerender set unchanged (/, /shop, /services, /login, /register), `check-built-css` **9/9** both, lint **14 warnings / 0 errors**. No commit.
+- DECISION: B3-1b dropped - SiteHeader search was already wired to `/shop?search=` (handover was wrong).
+- DECISION: V1 spec exclusions confirmed by owner (specs table, ratings, downloads, FBT, warranty/trust boxes, service sidebar/included-items).
+- DECISION: booking time serialization stays UTC; frontend converts to business timezone (owner-decided, handled in booking wizard task).
+- DECISION: permanent hosting deferred to Phase 13.
+
+## B3-3 - Services list + detail, B3-2 follow-up (2026-10-10)
+- **Step 0:** Service has NO image/asset field (PC Build fixture `description:null`); `GET /services` MSW existed but empty + no `GET /services/:slug` -> added 4 published fixtures + list (honours page/per_page, source default `[]`) + detail handler (404 `{message:"Not Found."}`) + recorders. Real wishlist URL is `POST /wishlist/:id`. `/services` stays prerendered -> route is loader-free, title template literal, skeleton-only HTML.
+- **ui (test-first).** New shared `formatDuration` + `formatPriceRange`; `ServiceCard` now consumes them (existing tests unchanged); RED: 2 ui suites first.
+- **Storefront (test-first).** New `ServiceListing` (`?page=`, keepPreviousData, `SERVICES_PER_PAGE 12`, h1 in every state, states: skeleton/ErrorState/EmptyState, cards link `/service/{slug}` + book -> `/booking`, inline `onPageChange`) + `ServiceDetail` (breadcrumb Home>Services>name, duration + price range + `whitespace-pre-line` description `<p>` ONLY when non-null, real "Book this service" -> `/booking`, 404 noindex + back link, sr-only h1s, no booking/availability request) + shared `DetailNotFound` (ProductDetail now uses it) + shared `META_DESCRIPTION_MAX 160`; `getServices(page?,perPage?)` reuses exported `clampPerPage`. RED: 3 storefront suites first.
+- **Part A (B3-2 follow-up).** Quantity input keeps a string draft (clear/type free, clamps to [1, stock_quantity] on blur and +/-/Add to Cart); vacuous disabled-buttons test replaced with out-of-stock+spy and no-handlers tests (real wishlist URL, zero cart/wishlist requests); MSW handler comment tidy-up only.
+- **Mutations (one-shot, each reverted):** removing noindex meta -> not-found test fails (expected null); PriceTag branch `discountPercent`->`compareAtPrice` -> null-percent-with-compare-at test fails; clamp `maxQuantity*2` -> draft clamp test fails; always-render description `<p>` -> null-description absence test fails.
+- Verify: ui ServiceCard+ProductCard+PriceTag+format-duration+format-price-range **39**, storefront scoped ProductDetail/ServiceListing/ServiceDetail/DetailNotFound/_index/SiteHeader/routes.test **107**, tsbuildinfo cleared, `tsc -b` **0**, storefront + admin builds **0**, prerender set unchanged and prerendered /services = `Services | TechFix` skeleton, `check-built-css` **9/9** both, lint **11 warnings / 0 errors**. No commit.
+- CORRECTED by B3-4 F1: the "107" was inflated — the SiteHeader path used during the B3-3 verify (`components/layout/SiteHeader.test.tsx`) did not match a file, so SiteHeader NEVER ran and its count was excluded while the sum still claimed it. True per-file counts (re-run, real paths): `SiteHeader.test.tsx` 31, `_index.test.tsx` 35, `routes.test.ts` 21, `ProductDetail.test.tsx` 15, `ServiceListing.test.tsx` 5, `ServiceDetail.test.tsx` 8, `DetailNotFound.test.tsx` 2 = **117**; api-client `services.test.ts` 3 + `catalog.test.ts` 38 = **41**; lint baseline re-run exact method = **11 warnings / 0 errors**. The B3-2 gate of 14 stays the gate: the drop to 11 is only partially explainable without git history (the B3-3 rewrite of the two placeholder service routes removed their non-component `meta`/`clientLoader` exports -> ~2 fewer `only-export-components` warnings) and no FULL-suites re-runs are permitted to hunt the 3rd warning, so the gate is never silently raised or the baseline re-claimed.
+
+## B3-4 - Hardening follow-up (2026-10-10)
+- **F1(a):** the B3-3 verify figure was wrong (SiteHeader never actually ran — see corrected B3-3 entry above); re-ran per-file with real paths = 117 storefront + 41 api-client. **F1(c):** lint baseline re-run exact method = 11 warnings / 0 errors; the 14 gate stays (only a partial ~2 warning drop is explainable — placeholder service route rewrites; no full-suite hunting allowed). **F1(b)** = the B3-3 corrections above.
+- **F2 (api-client, test-first):** `clampPerPage(perPage, caller)` now carries the caller's name in the error message; NaN message asserts the RIGHT source (`getServices` not `getProducts`). RED on the new NaN test, then GREEN: services 3->7 + catalog 38 = **45**.
+- **F4 (ui, test-first):** `buttonStyles({variant,size,className})` extracted from Button (base keeps `min-h/min-w 44px`), Button refactored onto it, exported from ui; the ServiceDetail CTA drops its invented hover class and reuses `buttonStyles({variant:"primary"})`. GREEN: Button+buttonStyles = **6**; ServiceDetail unchanged **8**.
+- **F5 (storefront, test-first):** shared `PageContainer` + `PageHeading` + `isNotFoundError` extracted and adopted by ProductDetail/ServiceDetail/ServiceListing/DetailNotFound (clean via grep). Other copies left intact (ProductListing, `_index`, SiteHeader/SiteFooter) — reported only. GREEN: 36 across the 5 files + 3 new files.
+- **F3 (storefront, test-first):** check of the real Laravel paginator -> it does NOT clamp `?page=` (out-of-range returns `{ data:[], current_page:99, total, last_page }`), while BOTH MSW `/products` and `/services` handlers DID clamp via `Math.min(lastPage, ..)`. BOTH fixed to floor-only; two out-of-range handler tests added (RED first). The listings now share `useRedirectToLastPage` (replace-only when `data.length===0 && total>0 && currentPage>lastPage`, never when total 0; guarded against redirect-to-itself so a fixed payload cannot loop), wired into ServiceListing (empty state now keyed on `total===0` — "No services yet" no longer shows on a valid-but-empty page) and ProductListing (basePath lifted, sort kept). One existing ProductListing test that asserted the old clamp behaviour was corrected to assert the redirect+sort preservation. Non-vacuous: dropping the `total > 0` guard makes the total-0 tests fail (proven, reverted). F3 suite: hook 3 + ServiceListing 7 + ProductListing 13 + handlers 20 = **43**.
+- Verify: storefront 13 real-path files **161 passed**, api-client `services catalog` **45**, ui Button+buttonStyles+ServiceCard+ProductCard+PriceTag **39**; tsbuildinfo cleared, `tsc -b` **0**, storefront + admin builds **0**, prerender set unchanged (/, /shop, /services, /login, /register) + prerendered /services = `Services | TechFix`, `check-built-css` **9/9** both, lint **11 warnings / 0 errors** (<= 14 gate). No commit.
+
+## B4-1a - Add to Cart wiring (2026-10-10)
+- **Step 0:** `POST /cart/items` takes `product_id` (integer, `exists:products,id`) + `quantity` (integer, `min:1`); an existing line INCREMENTS and renews the hold; 201 `{cart_item}`; over-stock -> 422 `"Only X left in stock."` (or `"Cannot increase to {n}."`). Hold TTL = BusinessSetting `cart_hold_minutes` (default 15) from add; expired holds are filtered at query time (own item excluded when increasing). `requireAuth` already stores `{targetRoute,method,url,data}` in sessionStorage `pending-action` (5-min TTL) and replays via api-client — but NO cart cache invalidation existed after a replay.
+- **Tests-first (RED then GREEN):** new `useAddToCart.test.tsx` (9), `ConnectedProductCard.test.tsx` (5), `add-to-cart.flow.test.tsx` (2); MSW gains a mutable cart source (`testCartItems`/`setCartItemsSource`/`addToCartSource`, POST upsert, reset in setup). DTL quirk found: a `<p role="status">` has an EMPTY accessible name, so assertions use `findByRole("status")` + `toHaveTextContent`, never `{name}`.
+- **Implementation:** `useAddToCart` (guest -> `requireAuth` defer, no request; auth -> mutation, invalidate ONLY `queryKeys.cart`, success / `409`+`422` server message when non-empty else generic / `401` re-defer / other -> generic; integer `quantity>=1` gate; single in-flight guard, default `quantity=1`). `ConnectedProductCard` wires `onAddToCart` (wishlist left UNSET) and replaces all 4 `<ProductCard>` call sites; `product.$slug.tsx` renders a `role="status"` notice — **corrected by B4-1b:** that notice now lives in `ProductDetail` as the always-mounted `Purchase options` status, and the route no longer renders one. `usePostAuthNavigation` invalidates `queryKeys.cart` after a successful replay (deps += `queryClient`), so `login`/`register`/`redirect-and-resume.flow` tests now supply the QueryClient provider.
+- **Non-vacuous (one-shot, each reverted):** guest branch calling the API anyway -> `expected 1 to be +0` at `callCounts.cartItems`; removing the post-replay invalidation -> `Unable to find role="link" and name "Cart, 1 item"`.
+- Verify: 14 real-path storefront files **204 passed**; tsbuildinfo cleared, `tsc -b` **0**, lint **11 warnings / 0 errors**; builds + `check-built-css` were skipped at the time (`packages/ui` unchanged per the then-current gate) — **corrected by B4-1b:** the storefront build + prerender check now run on EVERY storefront task, and the admin build runs whenever `packages/ui` OR `packages/api-client` changes. Prerender set unchanged by construction (/, /shop, /services, /login, /register + `__spa-fallback`; /services title `Services | TechFix`). No commit.
+
+## B4-1b - Hardening (2026-10-10)
+- **F0:** cleared `apps/storefront/node_modules/.tmp`; storefront build **0** + prerender set unchanged (/, /shop, /services, /login, /register + `__spa-fallback`), titles `/services`=`Services | TechFix`, `/login`=`Login - TechFix`, `/register`=`Register - TechFix`; `/login` html has the sign-in form and no "Unexpected Application Error"; `check-built-css` **9/9** (storefront + admin).
+- **F1 (storefront, tests first):** `ProductDetail` gains `statusMessage?: string | null`; quantity + Add to Cart + wishlist wrapped in `<div role="group" aria-label="Purchase options">` with an ALWAYS-MOUNTED `<p role="status">` (empty when no message); the route passes the hook `message` and drops its own notice/testid. Existing suite kept green by scoping 4 loading waits to the `"Loading product"` skeleton — an always-mounted empty status is otherwise matched by `queryByRole("status")` (proven via a scratch test). Mutation: status outside the group -> 3 new tests fail.
+- **F2 (api-client + storefront, tests first):** exported `buildAddCartItemRequest(productId, quantity)` -> `{method:"POST", url:"/cart/items", data}` (one path constant); `addCartItem` sends exactly it; `useAddToCart` defers via the builder; `CART_ITEMS_API_PATH` deleted. Mutation: builder url `/cart/items-mutated` -> api-client 2 + hook guest test fail.
+- **F3:** RTL `asyncUtilTimeout: 3000` (setup.ts) + vitest `testTimeout: 10000`; the 14 B4-1a paths at DEFAULT parallelism = **14 files / 207 passed**, 15.2s, 0 failures. **F4:** ConnectedProductCard guest test renamed to match its assertion.
+- **DECISION (D1):** guest wishlist heart -> login -> return to the same page, NO replay (the API is toggle-only, so replaying a toggle could REMOVE an item the account already had; supersedes the "wishlist add" auto-replay wording).
+- **DECISION (D2):** a public, allow-listed shipping-fee endpoint will be built as BE5 before checkout, computed by the same service the order uses; shown at checkout before placing the order.
+- Verify: storefront 14 files **207 passed** + api-client `cart` **6 passed**; tsbuildinfo cleared + `tsc -b` **0**; storefront + admin builds **0**; prerender set unchanged + titles as F0; `check-built-css` **9/9** both; lint **11 warnings / 0 errors**. No commit.
+
+## BE5 - Public shipping-fee endpoint (2026-10-11)
+- **Step 0:** the fee is **FLAT** — `OrderService::placeOrder()` did `(float) BusinessSetting::getValue('shipping_fee', 200)` then `total = subtotal + fee`; no threshold/city/weight/item-count branch. Computation was **inline** (no method). Money = 2-decimal string (`decimal:2` / `number_format`); public detail envelope = `{product}`/`{service}`, lists = raw paginator. Public group = top of `routes/api.php`; only `/services/{slug}/availability` was throttled (named limiter). Existing coverage: `OrderServiceTest`, `OrderApiTest`, `AdminOrderApiTest`, `DiscountProductApiTest`.
+- **Tests-first (RED then GREEN):** new `ShippingFeeApiTest` (7 tests) — all 7 RED first (route absent -> every read 404, route-middleware assertion null).
+- **DRY implementation:** new `ShippingFeeService::current()` returns the money string; `OrderService` now injects it (inline read+cast removed) so the checkout preview and `order.shipping_fee` share one source. New public `GET /api/v1/shipping-fee` (`ShippingFeeController`) returns exactly `{shipping_fee:"200.00"}`; allow-listed in the public group with a named `throttle:shipping-fee` limiter (mirrors `service-availability`). Read live, no cache; write methods 405.
+- **api-client + MSW:** `getShippingFee(): Promise<ShippingFeeResponse>` (+ type) exported; MSW handler/fixture `testShippingFee` + `setShippingFeeSource` (reset per test) + `callCounts.shippingFee`; `handlers.test` asserts wire agreement.
+- **Verify:** backend `ShippingFeeApiTest` + OrderApi/AdminOrderApi/OrderService/DiscountProduct = **70 passed / 265 assertions** (0 failed), Pint clean (6 files); api-client `shipping-fee cart services catalog` = **4 files / 54 passed**; storefront 14-file real-path regression set = **14 files / 184 passed** (Test Files == path count, default parallelism); tsbuildinfo cleared + `tsc -b` **0**; storefront + admin builds **0**; prerender set unchanged; `check-built-css` **9/9** both; lint **11 warnings / 0 errors**. No commit.
+
+## B4-1c - Cart slice (2026-10-11)
+- **Step 0 cart facts:** `GET /cart` -> `{cart:{id,user_id,items[]}}`, each item `{id,cart_id,product_id,quantity,hold_expires_at,hold_status,product}` (NO line/subtotal -> computed client-side); `PATCH /cart/items/{id}` quantity `required,integer,min:0`; `0` removes yet returns 200 `{cart_item:<stub>,message}`; negative -> 422 on `quantity`; over-stock -> 422 top-level `message` (NOT an `errors` bag); wrong-owner/missing -> 404; `DELETE` -> 200 `{message}`; no 409; expired-hold items are returned (`hold_status` `active`=Reserved / `expired` / `none`). Max quantity comes from `product.stock_quantity` (no per-line available stock).
+- **Gap fixed (tests-first):** `shipping_fee` is seeded type `string`, so `UpdateBusinessSettingRequest` accepted non-numeric / negative / >2-decimal values; added a per-key money rule (`required,numeric,min:0,decimal:0,2`) + 5 tests (RED 3 failed -> GREEN); backend AdminSettings+ShippingFee **21 passed**, Pint 2 files.
+- **New gates:** frontend VERIFY runs the FULL suites once each at default parallelism (storefront / api-client / ui); storefront build + prerender on EVERY storefront task; admin build when `packages/ui` OR `packages/api-client` changes.
+- **Tests-first slice:** ui `QuantityInput` (10) + ProductDetail rewired to it; storefront `lib/money` (`multiplyMoney`/`sumMoney`, 11) + `common/Announcer` (4) mounted once in `site-layout.tsx` (test utils gain opt-in `withAnnouncer`) + `ConnectedProductCard` announces through it; `CartView` (8) with MSW PATCH/DELETE `cart/items/:id` (+ forced 422), thin `/cart`, guarded `/checkout` placeholder, `routes.test` updated. Two one-shot mutations reverted: conditional announcer region -> "always mounted" test fails; dropping the cart invalidation -> subtotal-staleness test fails.
+- **Deliberate omissions:** NO hold countdown (V1); `/checkout` is a placeholder (real flow later); cart lines assume the eager-loaded `product` (server contract).
+- Verify: storefront **32 files / 324 passed**, api-client **17 / 231**, ui **29 / 240**; tsbuildinfo cleared + `tsc -b` **0**; storefront + admin builds **0**; prerender set unchanged (/, /shop, /services, /login, /register + `__spa-fallback`; /cart + /checkout NOT prerendered); `check-built-css` **9/9** both; lint **11 warnings / 0 errors**. No commit.

@@ -2,6 +2,7 @@
 
 namespace App\Modules\Merchandising\Http\Requests;
 
+use App\Modules\Merchandising\Support\BannerOverlayTextRules;
 use Illuminate\Foundation\Http\FormRequest;
 
 class StoreBannerRequest extends FormRequest
@@ -23,6 +24,10 @@ class StoreBannerRequest extends FormRequest
             'is_published' => ['sometimes', 'boolean'],
             'start_at' => ['sometimes', 'nullable', 'date'],
             'end_at' => ['sometimes', 'nullable', 'date'],
+            // Optional overlay text (BE1). Shared with UpdateBannerRequest so
+            // create and update cannot drift (rules.md §3 DRY).
+            'headline' => BannerOverlayTextRules::headline(),
+            'subtitle' => BannerOverlayTextRules::subtitle(),
         ];
     }
 }

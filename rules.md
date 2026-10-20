@@ -1,5 +1,5 @@
 # rules.md — Development Rules (Source of Truth)
-**Location in repo:** `/docs/rules.md`
+**Location in repo:** `/rules.md` (repo root, alongside `PRD.md`, `SRS.md`, `architecture.md`, `phases.md`, `design.md`, `frontend-plan.md`)
 **Applies to:** every human or AI contributor modifying this codebase.
 
 ---
@@ -59,6 +59,8 @@
 - Passwords hashed with a strong, salted algorithm; never logged or returned in any API response.
 - Rate limiting on authentication and review-submission endpoints.
 - Every publish/unpublish action and final-price entry is audit-logged (`architecture.md` §4/§10).
+- Any route or URL that comes from stored or URL-derived state must pass `isSafeInternalPath` (routes) or `isSafeApiUrl` (API replay) before navigation or request — including on write, on hydration, and again on replay (`architecture.md` §5.1). A hand-rolled `"starts with /"` check is not an acceptable substitute for the shared guards.
+- Do not auto-replay state-changing purchase/booking requests after login; restore the state and require an explicit confirm (`architecture.md` §5.2).
 
 ## 10. Performance Rules
 - No N+1 queries — use eager-loading/joins for list endpoints that render related data (e.g., products with category/brand names).
@@ -74,6 +76,9 @@
 ## 12. Testing Rules
 - New business logic ships with unit tests (especially: scheduling conflict detection, cancellation-window rules, price-range/final-price transitions, auth/ownership checks).
 - New API endpoints ship with an integration test covering at least: success path, validation failure, and unauthorized/unauthenticated access attempt.
+- **Frontend:** every `packages/ui` component and every `packages/api-client` module ships with a colocated test in the same change as the code it covers.
+- **Frontend:** page-level flows are tested with Vitest + React Testing Library + MSW, with `onUnhandledRequest: "error"` so an un-mocked request fails the test instead of silently hitting the network.
+- **Frontend:** test files are type-checked by `tsc -b` and are **not** covered by Vitest's `globals` typing — import `vi`, `describe`, `it`, etc. explicitly rather than relying on ambient globals, or the build breaks.
 - No feature is marked complete without the relevant tests passing — ties to the project's quality gate.
 
 ## 13. Dependency Rules

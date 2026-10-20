@@ -9,28 +9,68 @@ interface ModalProps {
   "aria-label"?: string;
 }
 
+const FOCUSABLE_SELECTOR =
+  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
 export function Modal({ isOpen, onClose, children, className, "aria-label": ariaLabel }: ModalProps) {
   const overlayRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") {
+        e.preventDefault();
+        onClose();
+        return;
+      }
+      if (e.key === "Tab") {
+        // Focus trap (design.md §3.10): Tab/Shift+Tab cycles only within the
+        // modal's focusable elements while open.
+        const focusable = Array.from(
+          contentRef.current?.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR) ?? []
+        );
+        if (focusable.length === 0) {
+          e.preventDefault();
+          contentRef.current?.focus();
+          return;
+        }
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        const active = document.activeElement as HTMLElement | null;
+        if (e.shiftKey && (active === first || active === contentRef.current)) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && active === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
     },
     [onClose]
   );
 
   useEffect(() => {
-    if (isOpen) {
-      document.addEventListener("keydown", handleKeyDown);
-      document.body.style.overflow = "hidden";
-      contentRef.current?.focus();
-    }
+    if (!isOpen) return;
+    document.addEventListener("keydown", handleKeyDown);
+    document.body.style.overflow = "hidden";
     return () => {
       document.removeEventListener("keydown", handleKeyDown);
       document.body.style.overflow = "";
     };
   }, [isOpen, handleKeyDown]);
+
+  // Focus moves into the modal on open, and returns to the triggering element
+  // on close (design.md §3.10). Captured at open time via document.activeElement.
+  useEffect(() => {
+    if (isOpen) {
+      previousFocusRef.current = document.activeElement as HTMLElement | null;
+      contentRef.current?.focus();
+    } else if (previousFocusRef.current) {
+      previousFocusRef.current.focus();
+      previousFocusRef.current = null;
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -56,6 +96,7 @@ export function Modal({ isOpen, onClose, children, className, "aria-label": aria
         )}
       >
         <button
+          type="button"
           onClick={onClose}
           className="absolute right-4 top-4 rounded-full p-1 text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-muted)] focus-visible:ring-2 focus-visible:ring-[var(--color-brand-accent)]"
           aria-label="Close modal"

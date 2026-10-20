@@ -1,7 +1,7 @@
 # frontend-plan.md — Frontend Build Plan (Storefront + Admin)
 **Location in repo:** `/frontend-plan.md` (repo root, same convention as `PRD.md`/`SRS.md`/`architecture.md`)
 **Depends on:** `design.md`, `architecture.md`, `rules.md`, `phases.md`, `PRD.md`, the `design-reference/` prototype set
-**Status:** Plan — no frontend code is written yet. Docs-only until Step 0 is kicked off.
+**Status:** In progress (2026-09-30). Step 0, Step 1, and Step 2 are complete; Step 3 is partially built (Home, Framework Mode + prerender, session bootstrap, route guard, Login/Register, MSW harness) with no layout shell yet; Step 4 is scaffold + Login only. The authoritative per-step status, test totals, and remaining work now live in `phases.md` under "Frontend Build (parallel track to Phase 12)" — check there first, this section is the plan of record rather than the status tracker.
 **Stack (verified):** Vite 8.2.0, React 19.2.8, react-router-dom 7.18.2, Tailwind v4 (`@tailwindcss/vite`), TanStack Query 5, Zustand 5, TS ~6.0, oxlint. npm workspaces (`apps/*`, `packages/*`). Node v24.18.0 / npm 11.16.0.
 
 ---
@@ -26,11 +26,12 @@
 ---
 
 ## Step 0 — Dev setup fixes (prereq, do first)
-1. Add distinct ports: storefront `5173`, admin `5174` in `vite.config.ts` (`server.port`). Both currently unset → collision.
-2. Add `VITE_API_URL` to per-app `.env` (default `http://localhost:8000/api/v1` already handled by api-client fallback); ensure root `.gitignore` covers `apps/*/.env` (currently only `server/.env` is ignored).
-3. **Reconcile `@ecommerce/ui` peer deps** — ui declares `react ^18.3.0` peer/devDeps and `tailwindcss ^3.4.0` while apps run React 19 + Tailwind v4. Align ui peer/dev ranges to `^18.3.0 || ^19.0.0` (same pattern api-client already uses) and Tailwind to v4 so tokens/components work identically in both apps.
-4. Wire `QueryClientProvider` into both `main.tsx` (TanStack Query is already a dep; server-state caching per architecture.md §9).
-5. Confirm a fresh `npm install` at the root resolves workspace links cleanly after peer-dep changes (lockfile exists).
+✅ **Done (2026-09-30).**
+1. ~~Add distinct ports~~ **Resolved** — storefront `5173`, admin `5174` in `vite.config.ts` (`server.port`); the collision is gone and both match the pre-configured CORS/Sanctum defaults.
+2. ~~Add `VITE_API_URL`~~ **Resolved** — set per app, defaulting to `http://localhost:8000/api/v1` via the api-client fallback; root `.gitignore` covers `apps/*/.env`.
+3. ~~Reconcile `@ecommerce/ui` peer deps~~ **Resolved** — ui peer/dev ranges are now `^18.3.0 || ^19.0.0` and Tailwind v4, so tokens/components work identically under React 19 in both apps.
+4. ~~Wire `QueryClientProvider`~~ **Resolved** — mounted in both apps.
+5. ~~Confirm a fresh `npm install` resolves workspace links~~ **Resolved** — clean workspace install verified.
 
 ---
 
@@ -74,8 +75,9 @@ Add typed wrapper modules mirroring the Laravel controllers (response shapes cop
 ## Step 3 — Storefront app
 Route order mirrors already-completed backend phases (catalog → cart/checkout → account → booking → reviews/showcase/banners).
 1. **Routes** (react-router v7, data-router): public + auth-gated wrapper (UX-only per PRD §5.5). Routes below are the canonical set (referenced by SEO Sitemap + meta config, §SEO).
-   - Public: `/`, `/shop`, `/shop/category/:slug`, `/shop/brand/:slug`, `/product/:slug`, `/our-it-services`, `/service/:slug`, `/our-brands`, `/login`, `/register`.
-   - Auth-gated: `/account/*` (dashboard, orders, order detail, bookings, booking detail, profile, addresses, wishlist, notifications), `/cart`, `/checkout`, booking wizard `/book/*` + `/booking/confirmed`.
+   - Public: `/`, `/shop`, `/shop/category/:slug`, `/shop/brand/:slug`, `/product/:slug`, `/services`, `/service/:slug`, `/login`, `/register`. **Note the real public services URL is `/services`** (not `/our-it-services` — the reference prototype's filename is not the URL), and the service detail page is `/service/:slug`. **`/our-brands` is still an open item** — no such route exists today; the decision pending is whether brands get a dedicated page or remain only the home "Shop by Brand" section plus the `/shop/brand/:slug` filter entry point. The per-brand listing route is already `/shop/brand/:slug`.
+   - Auth-gated: `/account/*` (dashboard, orders, order detail, bookings, booking detail, profile, addresses, notifications), `/cart`, `/wishlist`, `/checkout`, `/order/confirmed` (order confirmation — the canonical post-checkout URL; pick the exact path when the checkout route is built, since the `/checkout` route does not exist yet).
+   - **Not route-guarded:** the booking wizard. `/booking` is per-user but intentionally left outside the guard, because there is no safe action to auto-replay and the gate belongs at the confirm step (see `architecture.md` §5.2).
 2. **Layout** — header (dark `--color-surface-dark`, nav from live taxonomy), footer, built once, wraps all pages (matches `homepage_*` reference shell).
 3. **Home (`/`)** — Hero banner **Carousel** (live `/homepage-banners`; omit section entirely when empty) → Shop by Category (live `/categories`, CategoryCard row) → featured products (live `/products`) → Shop by Brand (live `/brands`, BrandCard tiles) → Review Showcase **Carousel + lightbox** (live `/review-showcase`; omit when empty) → services teaser.
 4. **Catalog** — `/shop` (live Taxonomy filter options, sort, search, pagination), `/shop/category/:slug` (subcategory scope handled via `CategoryService` on the API; Category Banner when present), `/shop/brand/:slug`, `/product/:slug` (gallery, qty, wishlist, Add-to-Cart auth-resume), search results.
@@ -143,9 +145,18 @@ Candidates evaluated against this project's **exact** versions: Vite **8.2.0**, 
 
 ## SECTION: Testing Strategy
 
+### Implemented layout (as built, 2026-09-30)
+The plan originally called for a shared `vitest.workspace.ts`/config at the repo root. That was **not** what got built. The actual layout is **per-package and per-app, with no shared root config**:
+
+- `packages/ui` and `packages/api-client` each have their own `vitest.config.ts` (jsdom + RTL + jest-dom) and their own `test` script.
+- `apps/storefront` has its own `vitest.config.ts` that is **entirely separate from its `vite.config.ts`**. The Vite config owns the app build (Framework Mode, Tailwind plugin, dev server); the Vitest config owns tests only (jsdom, `globals: true`, `include: app/**/*.test.{ts,tsx}`, and `VITE_API_URL` pointed at the MSW origin). Merging them would have coupled `npm test` to the app build pipeline.
+- **MSW lives in the storefront only, under `apps/storefront/app/test/`** (`handlers.ts`, `server.ts`, `setup.ts`, `utils.tsx`) — not at the repo root, and not in the packages. The ui and api-client packages test against props and a mocked `apiClient` respectively, so they need no network mock. The admin app has no MSW setup yet (Level 2 admin flows are still pending). MSW was added to the storefront only, not "both apps".
+- The storefront setup uses `onUnhandledRequest: "error"`, so any request a test forgot to mock fails the test instead of quietly reaching the network. This has already earned its keep — it caught a silent 401 during a cart replay in a page-level flow test.
+- Test files are type-checked by `tsc -b`, which does **not** pick up Vitest's ambient globals. `vi`/`describe`/`it` must be imported explicitly or the build fails; this is now recorded in `rules.md` §12.
+
 ### Level 1 — Unit tests: Vitest + React Testing Library
 - Scope: **every** `packages/ui` component and **every** `packages/api-client` module.
-- Add to workspace deps once: `vitest`, `@testing-library/react`, `@testing-library/user-event`, `@testing-library/jest-dom`, `jsdom` (or `happy-dom`). Add a `test` script to ui + api-client packages and a shared `vitest.workspace.ts`/config at repo root.
+- Add to workspace deps once: `vitest`, `@testing-library/react`, `@testing-library/user-event`, `@testing-library/jest-dom`, `jsdom` (or `happy-dom`). Add a `test` script to ui + api-client packages. ~~and a shared `vitest.workspace.ts`/config at repo root~~ **superseded** — no shared root config was built; see "Implemented layout" above.
 - **Written alongside each component/module as it's built (same task, not batched at the end).** Example coverage per ui component: renders each variant/all states (default/hover/focus/active/disabled/loading/error/empty), a11y attributes (`aria-`), keyboard operability (Button enter/space, Modal focus trap + Esc + return-focus, Carousel dots/prev/next Tab+Enter), reduced-motion behavior, and "no hard-coded data" (components take data via props only). Per api-client module: request URL/path, params, auth header (XSRF interceptor), response envelope→type mapping, and error propagation — against a mocked `apiClient` (no live server).
 - Reconcile the existing `packages/api-client/src/stores/pending-action-store.test.mjs` (plain MJS test) into the new Vitest harness during Step 2 so all tests run under one runner.
 
@@ -155,7 +166,7 @@ Candidates evaluated against this project's **exact** versions: Vite **8.2.0**, 
 - Loading (skeleton) + error (retry) paths asserted for every data-driven page in these tests.
 
 ### Level 3 — Real e2e (Playwright)
-- **Explicitly DEFERRED to Phase 12 (Hardening).** Documented here so it is not built now: no Playwright setup or tests in Phase 13 frontend work. Phase 12 adds browser-level e2e (full booking flow, checkout, keyboard-only traversal, both carousels, lightbox, reduced-motion) as part of its accessibility/responsive QA gate.
+- **Explicitly DEFERRED to Phase 12 (Hardening).** Documented here so it is not built now: no Playwright setup or tests in the Phase 12 (Hardening) frontend work. Phase 12 adds browser-level e2e (full booking flow, checkout, keyboard-only traversal, both carousels, lightbox, reduced-motion) as part of its accessibility/responsive QA gate.
 
 ### Task discipline (mirroring the backend quality gate)
 - Every scoped frontend task follows the backend's **PLAN → SMALL IMPLEMENTATION → TEST → VERIFY** discipline: the task includes its own unit/integration tests in the same change; a task is not "done" until `npm run lint` (oxlint), `npm run build` (tsc -b + vite), and the relevant Vitest suite pass in the affected packages/apps.
@@ -176,7 +187,7 @@ Candidates evaluated against this project's **exact** versions: Vite **8.2.0**, 
 ---
 
 ## Open items surfaced during planning (decisions to confirm before/while building)
-1. **Framework Mode migration scope** — adopt RR Framework Mode in storefront (recommended for SEO) vs. stay declarative + fallback plugin. (Storefront-only; admin unaffected.)
-2. **Staleness policy accepted?** New products/categories created between deploys render for crawlers only on the next build; client revalidation keeps live visitors fresh. (Recommended: accept.)
-3. **`@ecommerce/ui` React/Tailwind peer alignment** (React 19 + TW v4) — recommended, unblocks React 19 coinstallation today.
-4. **Port assignment** (storefront 5173 / admin 5174) matches pre-configured CORS/Sanctum defaults — recommended, no backend change needed.
+1. ~~**Framework Mode migration scope** — adopt RR Framework Mode in storefront vs. stay declarative + fallback plugin.~~ **Resolved** — Framework Mode was adopted in the storefront (`ssr: false` + `prerender()`); the admin app stayed a plain client SPA as recommended.
+2. ~~**Staleness policy accepted?**~~ **Resolved** — accepted. Client revalidation keeps live visitors fresh; newly created slugs reach crawlers on the next deploy.
+3. ~~**`@ecommerce/ui` React/Tailwind peer alignment**~~ **Resolved** — aligned to React 19 + Tailwind v4.
+4. ~~**Port assignment** (storefront 5173 / admin 5174)~~ **Resolved** — matches the pre-configured CORS/Sanctum defaults; no backend change was needed.

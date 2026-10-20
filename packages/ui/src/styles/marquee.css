@@ -1,0 +1,79 @@
+/* Marquee band animation (TASK B2b, seam fix B2b-fix). Lives in the @ecommerce/ui
+   styles tree so it is compiled once and reaches both apps via their
+   `@import "@ecommerce/ui/styles"` entry — apps/storefront/app/index.css and
+   apps/admin/src/index.css. No app-side wiring required.
+
+   ── Why the track carries NO gap (arithmetic) ───────────────────────────────────
+   The keyframes translate by -50%, so -50% must equal exactly one loop period:
+   the distance from the start of copy A to the start of copy B.
+
+   The original markup put a gap on BOTH the track and inside each copy. With
+   one copy's content width W (items + internal gaps) and track gap g:
+
+     track width      = W + g + W     = 2W + g
+     translate -50%   = (2W + g) / 2   = W + g/2
+     true period      = W + g           (copy A width plus the track gap)
+
+   Those disagree by g/2 (16px at --space-6), so every cycle jumped half a gap
+   and the loop visibly stuttered.
+
+   The fix moves all spacing inside the copies. Each copy now ends with
+   padding-right of g, so one copy's width is W' = W + g and the track gap is 0:
+
+     track width      = W' + W'        = 2W + 2g
+     translate -50%   = (2W + 2g) / 2   = W + g  = W'
+     true period      = W'              = W + g   ✓ equal
+
+   So the period is exactly one copy's full width INCLUDING its trailing padding.
+   Padding (not margin) is required: margin would sit outside the copy's box and
+   reintroduce the same off-by-g/2 error.
+
+   Short lists: the track is min-w-[200%] of the clipped container and each copy
+   grows to fill half of it, so a 2-item list still produces a track at least 2x
+   the container — enough for the -50% translation to always reveal copy B, and
+   no blank gap at the end of the band. */
+
+@keyframes marquee-scroll-left {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+@keyframes marquee-scroll-right {
+  from {
+    transform: translateX(-50%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+[data-marquee-track] {
+  animation-name: marquee-scroll-left;
+  will-change: transform;
+}
+
+[data-marquee-track][data-marquee-direction="right"],
+[data-direction="right"] [data-marquee-track] {
+  animation-name: marquee-scroll-right;
+}
+
+/* Pause: hover, focus-within, or the user pressing the pause button. React
+   owns the state and reflects it as data-paused; CSS only consumes it. */
+[data-paused="true"] [data-marquee-track] {
+  animation-play-state: paused;
+}
+
+/* Reduced-motion safety net. React already swaps to a single static copy via
+   useReducedMotion, so this rule normally never applies — it exists to cover
+   the window between the first paint and that effect, and any case where the
+   JS branch and the CSS media query disagree. It must win over the animation
+   shorthand, hence !important. */
+@media (prefers-reduced-motion: reduce) {
+  [data-marquee-track] {
+    animation: none !important;
+  }
+}

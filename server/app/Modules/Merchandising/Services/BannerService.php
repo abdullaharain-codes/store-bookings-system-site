@@ -37,6 +37,10 @@ class BannerService
             'is_published' => (bool) ($data['is_published'] ?? false),
             'start_at' => $data['start_at'] ?? null,
             'end_at' => $data['end_at'] ?? null,
+            // Optional overlay text (BE1). Absent and explicit-null are the same
+            // thing here: a banner with no overlay text.
+            'headline' => $data['headline'] ?? null,
+            'subtitle' => $data['subtitle'] ?? null,
         ];
 
         $this->assertTargetCategoryPublished($attributes['target_category_id']);
@@ -52,12 +56,17 @@ class BannerService
      * ignored here — flipping it requires the explicit publish()/unpublish()
      * action (mirrors CategoryService, so publish state can never be
      * side-stepped by a generic update).
+     *
+     * `array_key_exists` rather than a truthiness check is what lets an admin
+     * CLEAR the optional overlay text (BE1): sending headline => null (or "",
+     * which the global middleware has already turned into null) writes null,
+     * returning the banner to its image-only state.
      */
     public function updateBanner(HomepageBanner $banner, array $data): HomepageBanner
     {
         $updates = [];
 
-        foreach (['asset_id', 'display_order', 'start_at', 'end_at'] as $field) {
+        foreach (['asset_id', 'display_order', 'start_at', 'end_at', 'headline', 'subtitle'] as $field) {
             if (array_key_exists($field, $data)) {
                 $updates[$field] = $data[$field] ?? null;
             }

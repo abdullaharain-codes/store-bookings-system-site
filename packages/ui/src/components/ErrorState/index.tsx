@@ -21,7 +21,7 @@ export const ErrorState = forwardRef<HTMLDivElement, ErrorStateProps>(
         )}
         {...props}
       >
-        <h2 className="text-[var(--font-size-lg)] font-[var(--font-weight-medium)] text-[var(--color-text-primary)]">
+        <h2 className="text-[length:var(--font-size-lg)] font-[var(--font-weight-medium)] text-[var(--color-text-primary)]">
           {title}
         </h2>
         <p className="max-w-[40ch] text-sm text-[var(--color-text-secondary)]">

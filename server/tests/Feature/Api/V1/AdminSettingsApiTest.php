@@ -115,3 +115,62 @@ test('reading or updating a nonexistent setting key returns 404', function () {
         ->assertStatus(404)
         ->assertJson(['message' => 'Not Found']);
 });
+
+// ─── Money-type settings (B4-1c) ─────────────────────────────────────────────
+//
+// shipping_fee is seeded with type 'string' (see the seed migration), so the
+// generic per-type rule would accept ANY string ('abc', '-5', '1.999'). These
+// fix that with a per-key money rule and are the RED-first contract for it.
+
+test('a non-numeric shipping_fee is rejected, not stored', function () {
+    $this->actingAs($this->admin)
+        ->patchJson('/api/v1/admin/settings/shipping_fee', ['value' => 'abc'])
+        ->assertStatus(422)
+        ->assertJsonValidationErrors('value');
+
+    expect(BusinessSetting::where('key', 'shipping_fee')->value('value'))->toBe('200');
+});
+
+test('a negative shipping_fee is rejected', function () {
+    $this->actingAs($this->admin)
+        ->patchJson('/api/v1/admin/settings/shipping_fee', ['value' => '-5'])
+        ->assertStatus(422)
+        ->assertJsonValidationErrors('value');
+
+    expect(BusinessSetting::where('key', 'shipping_fee')->value('value'))->toBe('200');
+});
+
+test('a shipping_fee with more than two decimals is rejected', function () {
+    $this->actingAs($this->admin)
+        ->patchJson('/api/v1/admin/settings/shipping_fee', ['value' => '1.999'])
+        ->assertStatus(422)
+        ->assertJsonValidationErrors('value');
+
+    expect(BusinessSetting::where('key', 'shipping_fee')->value('value'))->toBe('200');
+});
+
+test('a valid shipping_fee with two decimals is accepted and persisted', function () {
+    $this->actingAs($this->admin)
+        ->patchJson('/api/v1/admin/settings/shipping_fee', ['value' => '149.99'])
+        ->assertOk()
+        ->assertJsonPath('setting.value', '149.99');
+
+    expect(BusinessSetting::where('key', 'shipping_fee')->value('value'))->toBe('149.99');
+});
+
+test('a whole-number shipping_fee is accepted', function () {
+    $this->actingAs($this->admin)
+        ->patchJson('/api/v1/admin/settings/shipping_fee', ['value' => '250'])
+        ->assertOk()
+        ->assertJsonPath('setting.value', '250');
+});
+
+test('the shipping fee endpoint serves the value just saved by the admin', function () {
+    $this->actingAs($this->admin)
+        ->patchJson('/api/v1/admin/settings/shipping_fee', ['value' => '175.50'])
+        ->assertOk();
+
+    $this->getJson('/api/v1/shipping-fee')
+        ->assertOk()
+        ->assertJson(['shipping_fee' => '175.50']);
+});

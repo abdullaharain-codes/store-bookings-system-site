@@ -20,7 +20,11 @@ return [
 
     'stateful' => explode(',', env('SANCTUM_STATEFUL_DOMAINS', sprintf(
         '%s%s',
-        'localhost,localhost:3000,127.0.0.1,127.0.0.1:8000,::1',
+        // Ports matter: Sanctum compares the request's Referer/Origin against
+        // this list to decide whether to hand out a session cookie, and that
+        // string includes the port. The Vite dev server (5173) and the admin
+        // app (5174) must be listed by host:port or neither gets a cookie.
+        'localhost,localhost:5173,localhost:5174,localhost:3000,127.0.0.1,127.0.0.1:5173,127.0.0.1:5174,127.0.0.1:8000,::1',
         Sanctum::currentApplicationUrlWithPort(),
         // Sanctum::currentRequestHost(),
     ))),

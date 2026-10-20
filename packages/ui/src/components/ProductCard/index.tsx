@@ -5,7 +5,7 @@ import { Button } from "../Button";
 import { Card } from "../Card";
 import { ClickableArea } from "../ClickableArea";
 import { LoadingSkeleton } from "../LoadingSkeleton";
-import { formatPrice } from "../../utils/format-price";
+import { PriceTag } from "../PriceTag";
 
 interface ProductCardProps {
   product: Product;
@@ -14,7 +14,15 @@ interface ProductCardProps {
   onWishlistToggle?: (productId: number) => void;
   onAddToCart?: (productId: number) => void;
   onViewDetails?: () => void;
-  compareAtPrice?: string;
+  /**
+   * Real destination for the card's main action (image + title). Optional and
+   * additive: omitting it keeps the pre-B2c behaviour, where the main action is
+   * `onViewDetails` on an `href="#"` placeholder anchor.
+   *
+   * Pass BOTH when the card should be a genuine link *and* a client-side route
+   * change — `packages/ui` has no router, so `href` alone would full-page load.
+   */
+  href?: string;
   averageRating?: number;
   reviewCount?: number;
   lowStockThreshold?: number;
@@ -24,18 +32,6 @@ interface ProductCardProps {
 interface StockBadge {
   label: string;
   variant: "success" | "warning" | "error";
-}
-
-function discountPercent(compareAtPrice: string | undefined, price: string): number | null {
-  if (compareAtPrice === undefined) {
-    return null;
-  }
-  const original = Number(compareAtPrice);
-  const current = Number(price);
-  if (!Number.isFinite(original) || !Number.isFinite(current) || original <= current) {
-    return null;
-  }
-  return Math.round(((original - current) / original) * 100);
 }
 
 function stockBadge(stockQuantity: number, threshold: number): StockBadge {
@@ -72,7 +68,7 @@ export const ProductCard = forwardRef<HTMLDivElement, ProductCardProps>(
       onWishlistToggle,
       onAddToCart,
       onViewDetails,
-      compareAtPrice,
+      href,
       averageRating,
       reviewCount,
       lowStockThreshold = 5,
@@ -85,8 +81,8 @@ export const ProductCard = forwardRef<HTMLDivElement, ProductCardProps>(
     }
 
     const image = product.images[0]?.asset;
-    const price = formatPrice(product.price);
-    const discount = discountPercent(compareAtPrice, product.price);
+    // DISCOUNT-1: the percentage is computed and appended server-side, so the
+    // card just branches on its presence. Null — not 0 — means "no discount".
     const stock = stockBadge(product.stock_quantity, lowStockThreshold);
     const wishlisted = isAuthenticated && isWishlisted;
     const showRating = averageRating !== undefined;
@@ -99,10 +95,10 @@ export const ProductCard = forwardRef<HTMLDivElement, ProductCardProps>(
         className="flex flex-col gap-[var(--space-3)] overflow-hidden"
       >
         <div className="group relative -mx-4 -mt-4 flex aspect-[4/3] w-full items-center justify-center overflow-hidden bg-[var(--color-surface-muted)] p-4">
-          <ClickableArea onActivate={onViewDetails} className="h-full w-full">
+          <ClickableArea onActivate={onViewDetails} href={href} className="h-full w-full">
             {image ? (
               <img
-                src={image.path}
+                src={image.url}
                 alt={product.name}
                 className="h-full w-full object-contain mix-blend-darken transition-transform duration-500 group-hover:scale-105"
               />
@@ -137,7 +133,7 @@ export const ProductCard = forwardRef<HTMLDivElement, ProductCardProps>(
           </div>
         </div>
 
-        <ClickableArea onActivate={onViewDetails} className="flex-grow">
+        <ClickableArea onActivate={onViewDetails} href={href} className="flex-grow">
           <div className="flex flex-col gap-[var(--space-1)]">
             {product.brand?.name && (
               <span className="text-[length:var(--font-size-label-caps)] font-semibold uppercase tracking-[var(--letter-spacing-label-caps)] text-[var(--color-text-muted)]">
@@ -181,19 +177,11 @@ export const ProductCard = forwardRef<HTMLDivElement, ProductCardProps>(
             <p className="text-[length:var(--font-size-label-caps)] font-semibold tracking-[var(--letter-spacing-label-caps)] text-[var(--color-text-muted)]">
               Price
             </p>
-            <div className="flex flex-wrap items-baseline gap-[var(--space-2)]">
-              <span className="font-[family-name:var(--font-family-display)] text-[length:var(--font-size-price-display)] font-bold text-[var(--color-text-primary)]">
-                {price}
-              </span>
-              {discount !== null && (
-                <>
-                  <span className="text-sm text-[var(--color-text-secondary)] line-through">
-                    {formatPrice(compareAtPrice!)}
-                  </span>
-                  <Badge variant="error">-{discount}%</Badge>
-                </>
-              )}
-            </div>
+            <PriceTag
+              price={product.price}
+              compareAtPrice={product.compare_at_price}
+              discountPercent={product.discount_percent}
+            />
           </div>
           <Button
             type="button"

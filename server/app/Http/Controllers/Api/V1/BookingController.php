@@ -24,11 +24,13 @@ class BookingController extends Controller
      */
     public function store(StoreBookingRequest $request): JsonResponse
     {
+        $window = $request->window();
+
         $booking = $this->bookingService->confirmBooking(
             $request->user(),
             $request->validated('service_id'),
-            $request->date('scheduled_slot_start'),
-            $request->date('scheduled_slot_end'),
+            $window['scheduled_slot_start'],
+            $window['scheduled_slot_end'],
             $request->validated('address_id'),
             $request->validated('problem_description'),
         );

@@ -26,6 +26,11 @@ class Asset extends Model
         'uploaded_by',
     ];
 
+    protected $appends = [
+        'url',
+        'thumbnail_url',
+    ];
+
     protected static function booted(): void
     {
         static::creating(function (Asset $asset) {

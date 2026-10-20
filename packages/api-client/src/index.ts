@@ -3,6 +3,9 @@ export {
   getCategories,
   getBrands,
   getProducts,
+  getProductBySlug,
+  getCategoryBySlug,
+  getBrandBySlug,
   type Category,
   type Brand,
   type Product,
@@ -11,16 +14,21 @@ export {
   type CategoriesResponse,
   type BrandsResponse,
   type ProductsResponse,
+  type ProductDetailResponse,
+  type CategoryDetailResponse,
+  type BrandDetailResponse,
 } from "./catalog";
 export {
   getCart,
   addCartItem,
+  buildAddCartItemRequest,
   updateCartItem,
   removeCartItem,
   type Cart,
   type CartItem,
   type CartResponse,
   type CartItemResponse,
+  type AddCartItemRequest,
 } from "./cart";
 export {
   getAddresses,
@@ -41,11 +49,71 @@ export {
   type OrdersResponse,
 } from "./order";
 export {
+  getWishlist,
+  toggleWishlist,
+  type WishlistItem,
+  type WishlistResponse,
+  type WishlistToggleResponse,
+} from "./wishlist";
+export {
   getServices,
   getServiceBySlug,
   type Service,
   type ServicesResponse,
 } from "./services";
-export { useAuthStore, type User } from "./stores/auth-store";
+export { getShippingFee, type ShippingFeeResponse } from "./shipping-fee";
+export {
+  getHomepageBanners,
+  type HomepageBanner,
+  type HomepageBannersResponse,
+} from "./homepage-banners";
+export {
+  getReviewShowcase,
+  type ReviewShowcaseItem,
+  type ReviewShowcaseResponse,
+} from "./review-showcase";
+export {
+  getProductReviews,
+  getServiceReviews,
+  submitReview,
+  type ReviewItem,
+  type Review,
+  type ReviewsResponse,
+  type SubmitReviewData,
+  type SubmitReviewResponse,
+} from "./reviews";
+export {
+  getDashboard,
+  type DashboardSummary,
+  type DashboardUpcomingBooking,
+} from "./dashboard";
+export {
+  getNotifications,
+  markNotificationRead,
+  markAllNotificationsRead,
+  type Notification,
+  type NotificationData,
+  type OrderStatusNotificationData,
+  type BookingStatusNotificationData,
+  type BookingFinalPriceNotificationData,
+  type NotificationsResponse,
+  type NotificationReadResponse,
+  type MarkAllNotificationsResponse,
+} from "./notifications";
+export {
+  getProfile,
+  updateProfile,
+  changePassword,
+  type Profile,
+  type ProfileResponse,
+  type UpdateProfileData,
+  type ChangePasswordData,
+  type ChangePasswordResponse,
+} from "./profile";
+export { useAuthStore, type User, type AuthState } from "./stores/auth-store";
 export { usePendingActionStore } from "./stores/pending-action-store";
-export { useRedirectAndResume } from "./hooks/use-redirect-and-resume";
+export {
+  useRedirectAndResume,
+  type ResumeFailureReason,
+} from "./hooks/use-redirect-and-resume";
+export { isSafeInternalPath, isSafeApiUrl } from "./utils/safe-path";

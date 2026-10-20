@@ -14,6 +14,11 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * never a hard-coded URL (architecture.md §4/§6). The public payload resolves
  * the live category slug at click time, so an admin re-pointing a banner takes
  * effect immediately.
+ *
+ * Also carries optional overlay text (headline/subtitle, BE1) for design.md
+ * §3.7's "optional overlay text". Both are plain nullable strings — no casts
+ * are needed, and deliberately none are added so the JSON shape stays a string
+ * or null rather than gaining a surprise type.
  */
 class HomepageBanner extends Model
 {
@@ -27,6 +32,10 @@ class HomepageBanner extends Model
         'is_published',
         'start_at',
         'end_at',
+        // Optional overlay text (BE1). Nullable because null is a real state:
+        // "image only, no overlay" (design.md §3.7 marks the overlay optional).
+        'headline',
+        'subtitle',
     ];
 
     protected $casts = [

@@ -1,5 +1,5 @@
 # design.md — UI/UX Design System
-**Location in repo:** `/docs/design.md`
+**Location in repo:** `/design.md` (repo root, alongside `PRD.md`, `SRS.md`, `architecture.md`, `rules.md`, `phases.md`, `frontend-plan.md`)
 **Depends on:** `PRD.md`, `architecture.md`
 **Target:** WCAG 2.2 AA · keyboard-first · original brand (not a Czone or TechHunk copy — see `00-PRODUCT-DEFINITION.md` §2 for the teardown this system is informed by)
 
@@ -27,6 +27,7 @@ label-caps:    Inter 12px/16px semibold 600, letter-spacing 0.05em, uppercase   
 Two families, one scale, shared across storefront and admin — per `rules.md` §4, no per-page fonts. Sora is used for display/headlines/price only; Inter for everything else.
 
 ### 2.2 Color (semantic tokens — WCAG 2.2 AA verified pairings only)
+> **RE-VERIFY PENDING (flagged 2026-09-30):** the `Badge` `success` variant renders `--color-status-success: #16A34A` as **text** on a 10%-tint background that is effectively near-white — roughly **3.3:1 at 12px**, which is **below the 4.5:1 body-text threshold** this section mandates. It slipped through the 2026-09-26 audit because the audit checked the status colours as *text on white*, not as they are actually paired in the component. No token change has been made; either darken the success token or give the `success` variant a darker text colour before the Badge is used on any customer-facing screen. Tracked as `phases.md` Phase 12 item 16.
 ```
 color.text.primary      = #131B2E   (on light surfaces)
 color.text.secondary    = #42474F   (on-surface-variant — readable on white AND tinted surfaces, ≥8:1)
@@ -34,7 +35,7 @@ color.text.muted        = #64748B   (text-muted — microcopy on white only, 4.7
 color.text.inverse      = #F8FAFC   (on dark surfaces)
 color.surface.base      = #FFFFFF
 color.surface.muted     = #EAEDFF   (surface-container — blue-tinted, hover/placeholder/icon-tile bg)
-color.surface.dark      = #0B1E36   (trust/technology anchor — header, footer, hero backdrop)
+color.surface.dark      = #0B1E36   (trust/technology anchor — HERO BACKDROP ONLY; see note below)
 color.brand.accent      = #00355F   (canonical primary — nav, headings, prices, primary buttons; 12.55:1 with white)
 color.accent.cta        = #C2410C   (high-intent CTA — "Book Service" orange; 5.18:1 with white)
 color.status.success    = #16A34A
@@ -43,6 +44,17 @@ color.status.error      = #DC2626
 color.status.info       = #2563EB
 color.border.default    = #E2E8F0
 ```
+**`color.surface.dark` is not the header/footer anchor.** The reference screens
+ship a **light** site chrome: the header is `surface-container-lowest` with a 1px
+`border-b` in the outline colour, and the footer is `surface-dim` with a 1px
+`border-t` (`homepage_with_featured_products_carousel/code.html` L177 and L954;
+`laptops_category_apex_precision_tech_1/code.html` L136 repeats the light header,
+adding only a `dark:` variant). In this repo's vocabulary that means the header
+uses `color.surface.base` / `color.surface.muted` with `color.border.default`, and
+the footer uses a dimmed surface with `color.border.default`. The dark token stays
+available for hero backdrops and other dark media surfaces only. This also keeps
+the shared `:focus-visible` ring (`color.brand.accent`) above 3:1 on the light bar
+without introducing a second focus token.
 Every text/surface pairing above must meet ≥4.5:1 contrast (body text) / ≥3:1 (large text, ≥24px or bold ≥19px) before use — this is the specific failure both reference sites had (see `00-PRODUCT-DEFINITION.md` §2) and must not be repeated. **Two deliberate AA deviations from the reference's exact hexes:** the reference high-intent CTA `#F97316` (2.80:1 with white — fails even 3:1) is darkened to `#C2410C`, and status-warning `#F59E0B` (2.15:1) to `#B45309`. `#F97316`/`#F59E0B` may only appear as large-graphic/decorative accents on tinted backgrounds, never as text or button fill with white text.
 
 ### 2.3 Spacing (8px base rhythm)
@@ -85,13 +97,17 @@ Name, short description, price **range** (min–max, never a single misleading n
 ### 3.4 Category Card *(new — Brand & Category Visual Management)*
 **Anatomy:** logo/image (from `Category.logoImageId`), name, optional item count.
 **Behavior:** entire card is a single click/tap target → navigates to `/shop/category/{slug}`. Image `alt` text = category name (required, not decorative).
-**Data:** rendered purely from the `GET /categories?published=true` response — the component must accept zero hard-coded category props; if the API returns an empty published list, render the Empty State (Section 3.9), never a blank grid.
-**Responsive:** horizontally scrollable row on mobile with visible partial-next-card affordance; grid on tablet/desktop.
+**Data:** rendered purely from the `GET /categories?published=true` response — the component must accept zero hard-coded category props; if the API returns an empty published list the **Home band is omitted from the page** (Section 3.9), never rendered as an empty box.
+**Card item markup:** each item is a **real link** to `/shop/category/{slug}` (a React Router `Link` wrapping the card), not a click-handler with a synthetic `href="#"` — so items are crawlable, shareable and middle-clickable. Image `alt` text = category name (required, not decorative). Card items must contain **no `id` attribute** (they are rendered twice inside a `Marquee`, and duplicate ids are invalid HTML).
+**Home — "Shop by Category" band:** an `h2` (centered, per the design reference) + a horizontal band of Category Cards, in the API's order (admin `displayOrder`). The band is a **continuous `Marquee`** (Section 3.4/§3.5 band rules, §2.5 motion): one auto-scrolling row, hover/focus-paused, with the WCAG 2.2.2 pause/resume control. Below `MARQUEE_MIN_ITEMS = 6` items the same cards render instead as a **static, centred, wrapping row — no motion, no pause control**, because a marquee too short to overflow its container shows its duplicated loop copy mid-row and reads as a rendering fault. The page omits the whole section (heading included) when the published list is empty.
+**Shop / category pages:** unchanged — horizontally scrollable row on mobile with visible partial-next-card affordance; grid on tablet/desktop. Do **not** apply the marquee outside Home; the band is a merchandising treatment for the Home page only.
 
 ### 3.5 Brand Card / Logo Tile *(new)*
 **Anatomy:** logo image only (with `alt` = brand name), on a neutral card background so varied logo aspect ratios/colors stay visually consistent.
 **Behavior:** clickable → `/shop/brand/{slug}`. Also reused, in compact form, as a **filter chip** on the Shop page filter panel — same data source, same click semantics (selecting = apply filter, not navigate, when used in filter context — document this variant distinction clearly in the component's prop API, e.g. `variant="tile" | "filter"`).
 **Data:** from `GET /brands?published=true` — zero hard-coded brand list.
+**Card item markup:** each item is a **real link** to `/shop/brand/{slug}` (React Router `Link` wrapping the tile). Items are rendered twice inside a `Marquee`, so — as with the Category Card — item markup carries **no `id` attribute** and no mount side effects.
+**Home — "Shop by Brands" band:** mirrors §3.4 exactly: an `h2` (centered) + a band of Brand tiles in the API's order. Continuous `Marquee` at `>= MARQUEE_MIN_ITEMS (6)` brands; static, centred, wrapping row below that (no motion, no pause control); whole section omitted when no brand is published. Every published brand appears — brands are a flat list, so there is no top-level narrowing to apply (unlike §3.4).
 
 ### 3.6 Category Banner (category-page hero) *(new)*
 Optional per category (`Category.bannerImageId`); when present, renders as a wide header image with the category name overlaid, at the top of that category's listing page. When absent, the category listing page renders without a banner slot (no broken-image placeholder) — component must handle the "no banner" case gracefully.
@@ -169,4 +185,4 @@ Concise, confident, plain language — e.g., button labels are verbs ("Book Now,
 - [ ] No sensitive data or raw error detail exposed in any error/empty state.
 
 ---
-**All five Phase-0 documents (`PRD.md`, `architecture.md`, `rules.md`, `phases.md`, `design.md`) are now complete and consistent with each other.** Recommended repo placement: project root `/docs/` folder, exactly as delivered.
+**All five Phase-0 documents (`PRD.md`, `architecture.md`, `rules.md`, `phases.md`, `design.md`) are now complete and consistent with each other.** Repo placement (corrected 2026-09-30): the project root itself, not a `/docs/` folder — they ship as `/PRD.md`, `/architecture.md`, `/rules.md`, `/phases.md`, `/design.md`, alongside the later `/SRS.md` and `/frontend-plan.md`. There is no `/docs` directory in this repository.

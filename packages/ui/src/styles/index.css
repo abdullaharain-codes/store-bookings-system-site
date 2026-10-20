@@ -1,1 +1,9 @@
 @import "./tokens.css";
+@import "./marquee.css";
+
+/* Tailwind scans the consuming app's Vite root, not this package, so classes
+   used only inside packages/ui never reached any app's CSS. Scan this package
+   explicitly; the path is relative to this file. */
+@source "../**/*.{ts,tsx}";
+@source not "../**/*.test.ts";
+@source not "../**/*.test.tsx";

@@ -21,6 +21,10 @@ interface ProductRepositoryInterface
      *   obtains them via CategoryService::getProductScope(); this repository
      *   stays data-access-only and never calls Taxonomy services).
      * - brand_id: int
+     * - featured: bool — present only when the caller supplied the flag;
+     *   narrows to featured (true) or non-featured (false). findPublished
+     *   always still requires is_published, so a featured-but-unpublished
+     *   product can never be returned here.
      * - search: string (matches name or SKU)
      * - sort: 'price_asc'|'price_desc'|'newest' (default 'newest')
      * - per_page: int (default 15)

@@ -1,0 +1,47 @@
+# DEV / TEST ONLY — local backend test runner.
+# NOT part of the Hostinger production deployment. Nothing in this directory is
+# uploaded, built or referenced by the production deploy path.
+#
+# Purpose: run the Laravel backend test suite on a GD-enabled PHP, because
+# Smart App Control on the Windows host blocks the host's ext-gd
+# (Code Integrity 3033). FileUploadService hard-codes Intervention's GD driver,
+# so without GD every product/asset endpoint 500s.
+#
+# The image is php:8.5 because server/composer.lock requires php >= 8.4.1
+# (Symfony 8.1 components), which php:8.3 cannot satisfy. The PRODUCTION PHP
+# version on Hostinger is UNVERIFIED and must be confirmed separately.
+#
+# There is deliberately NO database service here: server/phpunit.xml pins
+# DB_CONNECTION=sqlite with DB_DATABASE=":memory:", so the suite is
+# self-contained and needs no MySQL.
+
+name: ecommerce-dev
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ecommerce-dev-api:php8.5-gd
+    working_dir: /app
+    volumes:
+      # Repo source, read-write: artisan writes storage/logs, storage/framework
+      # and bootstrap/cache during a test run.
+      - ../../server:/app
+      # Named volume, so `composer install` never writes vendor/ through the
+      # OneDrive bind mount (slow and flaky) and never clobbers the host's
+      # Windows-built vendor tree. node_modules is NOT needed in the container.
+      - vendor:/app/vendor
+    environment:
+      APP_ENV: testing
+      COMPOSER_MEMORY_LIMIT: "-1"
+    command: >
+      sh -lc "set -e;
+      echo '=== php -v ==='; php -v;
+      echo '=== php -m | grep -i gd ==='; php -m | grep -i gd;
+      echo '=== composer install ===';
+      composer install --no-interaction --prefer-dist --no-progress;
+      echo '=== php artisan test ==='; php artisan test;"
+
+volumes:
+  vendor:

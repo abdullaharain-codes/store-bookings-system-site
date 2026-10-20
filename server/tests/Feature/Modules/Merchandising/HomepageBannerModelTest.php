@@ -21,11 +21,31 @@ test('homepage_banners table exists with the expected columns', function () {
         'is_published',
         'start_at',
         'end_at',
+        'headline',
+        'subtitle',
         'created_at',
         'updated_at',
     ] as $column) {
         expect(Schema::hasColumn('homepage_banners', $column))->toBeTrue();
     }
+});
+
+test('the optional overlay text columns are nullable so a banner can be image only', function () {
+    // BE1: null is a meaningful state, not missing data — see the migration.
+    // Read the flag from the schema itself rather than trusting a helper, the
+    // same way the index/FK tests above read PRAGMA directly.
+    $columns = collect(DB::select("PRAGMA table_info('homepage_banners')"))
+        ->keyBy('name');
+
+    foreach (['headline', 'subtitle'] as $column) {
+        expect($columns)->toHaveKey($column)
+            ->and($columns[$column]->notnull)->toEqual(0);
+    }
+
+    // And the default definition really does accept a null overlay.
+    $banner = HomepageBanner::factory()->create();
+
+    expect($banner->headline)->toBeNull()->and($banner->subtitle)->toBeNull();
 });
 
 test('display order and publish state carry the expected indexes', function () {

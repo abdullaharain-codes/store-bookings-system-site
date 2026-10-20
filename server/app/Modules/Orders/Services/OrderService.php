@@ -2,7 +2,6 @@
 
 namespace App\Modules\Orders\Services;
 
-use App\Models\BusinessSetting;
 use App\Models\CartItem;
 use App\Models\Order;
 use App\Models\Product;
@@ -36,6 +35,7 @@ class OrderService
         private readonly AddressRepositoryInterface $addressRepo,
         private readonly AuditLogger $auditLogger,
         private readonly NotificationService $notificationService,
+        private readonly ShippingFeeService $shippingFeeService,
     ) {}
 
     /**
@@ -71,7 +71,9 @@ class OrderService
             throw new OrderValidationException('Cannot place an order with an empty cart.');
         }
 
-        $shippingFee = (float) BusinessSetting::getValue('shipping_fee', 200);
+        // Flat, platform-wide fee — read through the same service the public
+        // shipping-fee endpoint uses, so checkout and the order cannot diverge.
+        $shippingFee = $this->shippingFeeService->current();
 
         // ── 3. Atomic order creation ──
         //
@@ -152,7 +154,7 @@ class OrderService
             }
 
             // ── 4. Compute totals ──
-            $total = number_format((float) $subtotal + $shippingFee, 2, '.', '');
+            $total = number_format((float) $subtotal + (float) $shippingFee, 2, '.', '');
 
             // ── 5. Create Order (with address snapshot) ──
             //
@@ -170,7 +172,7 @@ class OrderService
                 'city' => $address->city,
                 'postal_code' => $address->postal_code,
                 'subtotal' => $subtotal,
-                'shipping_fee' => number_format($shippingFee, 2, '.', ''),
+                'shipping_fee' => $shippingFee,
                 'total' => $total,
                 'status' => 'pending',
                 'payment_status' => 'pending',

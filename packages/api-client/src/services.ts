@@ -8,7 +8,7 @@
  * - GET /services/{slug} -> { service: Service }
  */
 import apiClient from "./api-client";
-import type { Paginator } from "./catalog";
+import { clampPerPage, type Paginator } from "./catalog";
 
 // ─── Entity types (serialized JSON shapes) ──────────────────────────────────
 
@@ -34,10 +34,20 @@ export type ServicesResponse = Paginator<Service>;
 
 // ─── Endpoint wrappers ──────────────────────────────────────────────────────
 
-/** Published services, paginated. */
-export async function getServices(page?: number): Promise<ServicesResponse> {
+/**
+ * Published services, paginated. `perPage` is clamped to [1, 48] — the server
+ * enforces the same cap (App\Support\PerPage::MAX) — so the /services listing
+ * can request a grid-sized page instead of the server default 15.
+ */
+export async function getServices(
+  page?: number,
+  perPage?: number,
+): Promise<ServicesResponse> {
+  const params: Record<string, number> = {};
+  if (page !== undefined) params.page = page;
+  if (perPage !== undefined) params.per_page = clampPerPage(perPage, "getServices");
   const { data } = await apiClient.get<ServicesResponse>("/services", {
-    params: page !== undefined ? { page } : undefined,
+    params: Object.keys(params).length > 0 ? params : undefined,
   });
   return data;
 }

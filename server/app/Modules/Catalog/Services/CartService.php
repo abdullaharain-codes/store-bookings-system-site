@@ -161,12 +161,15 @@ class CartService
     }
 
     /**
-     * Get the user's cart with items + products eager-loaded (rules.md §10).
+     * Get the user's cart with items + products fully eager-loaded (rules.md §10).
+     * The full product shape (brand, categories, images+assets) mirrors
+     * EloquentProductRepository so cart items render in ProductCard-equivalent
+     * UI without N+1 queries.
      */
     public function getCart(User $user): Cart
     {
         $cart = $this->cartRepo->findOrCreateForUser($user);
-        $cart->load('items.product');
+        $cart->load(['items.product.brand', 'items.product.categories', 'items.product.images.asset']);
 
         return $cart;
     }

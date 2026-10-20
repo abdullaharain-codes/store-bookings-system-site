@@ -494,9 +494,8 @@ class BookingService
     private function assertNoOverlappingBooking(Carbon $startsAt, Carbon $endsAt): void
     {
         $overlapping = ServiceBooking::query()
-            ->where('status', '!=', 'cancelled')
-            ->where('scheduled_slot_start', '<', $endsAt)
-            ->where('scheduled_slot_end', '>', $startsAt)
+            ->notCancelled()
+            ->overlappingWith($startsAt, $endsAt)
             ->lockForUpdate()
             ->first();
 

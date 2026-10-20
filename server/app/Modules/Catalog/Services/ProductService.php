@@ -37,9 +37,13 @@ class ProductService
             // Cast here (not only at the FormRequest layer) because the service
             // is also callable from tests/other code without HTTP validation.
             'price' => (float) ($data['price'] ?? 0),
+            'compare_at_price' => $this->normalizeCompareAtPrice($data['compare_at_price'] ?? null),
             'stock_quantity' => (int) ($data['stock_quantity'] ?? 0),
             'brand_id' => isset($data['brand_id']) ? (int) $data['brand_id'] : null,
             'is_published' => (bool) ($data['is_published'] ?? false),
+            // Merchandising flag (BE2). Absent and explicit-false are the same
+            // outcome: a new product starts life not featured.
+            'is_featured' => (bool) ($data['is_featured'] ?? false),
         ];
 
         $categoryIds = array_map('intval', $data['category_ids'] ?? []);
@@ -73,6 +77,22 @@ class ProductService
             if (array_key_exists($field, $data)) {
                 $updates[$field] = $data[$field];
             }
+        }
+
+        // compare_at_price (DISCOUNT-1) is nullable: present-and-null or an
+        // empty string clears the discount, so array_key_exists (not isset)
+        // is what lets null through.
+        if (array_key_exists('compare_at_price', $data)) {
+            $updates['compare_at_price'] = $this->normalizeCompareAtPrice($data['compare_at_price']);
+        }
+
+        // Merchandising flag (BE2), cast here for the same reason price and
+        // stock are: the service is callable outside HTTP validation.
+        // array_key_exists (not isset) is what lets false through — isset()
+        // would treat false as absent and the product could never be
+        // un-featured.
+        if (array_key_exists('is_featured', $data)) {
+            $updates['is_featured'] = (bool) $data['is_featured'];
         }
 
         // Publication state changes must go through publish()/unpublish() so
@@ -333,5 +353,20 @@ class ProductService
         }
 
         return $normalized;
+    }
+
+    /**
+     * Null/empty/whitespace all mean "no discount" and collapse to null;
+     * otherwise the value is cast to a float. The strictly-greater-than
+     * invariant is enforced at the FormRequest layer (and here a DB column),
+     * not re-checked in this service — same pattern as price.
+     */
+    private function normalizeCompareAtPrice(mixed $compareAt): ?float
+    {
+        if ($compareAt === null || trim((string) $compareAt) === '') {
+            return null;
+        }
+
+        return (float) $compareAt;
     }
 }

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Modules\Scheduling\Support\BusinessClock;
 use Illuminate\Database\Eloquent\Model;
 
 class BusinessSetting extends Model
@@ -11,6 +12,15 @@ class BusinessSetting extends Model
     protected $casts = [
         'value' => 'string',
     ];
+
+    /**
+     * Any saved setting invalidates BusinessClock's memoised timezone, so an
+     * admin change is re-read (once) on the next request and never served stale.
+     */
+    protected static function booted(): void
+    {
+        static::saved(fn () => BusinessClock::clearMemo());
+    }
 
     public static function getValue(string $key, mixed $default = null): mixed
     {

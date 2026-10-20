@@ -45,6 +45,61 @@ describe("services", () => {
     });
   });
 
+  it("getServices sends per_page alone when only perPage is given", async () => {
+    mockGet.mockResolvedValue({ data: { data: [] } });
+
+    await getServices(undefined, 12);
+
+    expect(mockGet).toHaveBeenCalledWith("/services", {
+      params: { per_page: 12 },
+    });
+  });
+
+  it("getServices sends page and per_page together", async () => {
+    mockGet.mockResolvedValue({ data: { data: [] } });
+
+    await getServices(2, 12);
+
+    expect(mockGet).toHaveBeenCalledWith("/services", {
+      params: { page: 2, per_page: 12 },
+    });
+  });
+
+  it("getServices clamps perPage into [1, 48] the same way as getProducts", async () => {
+    mockGet.mockResolvedValue({ data: { data: [] } });
+
+    await getServices(undefined, 0);
+    expect(mockGet).toHaveBeenLastCalledWith("/services", {
+      params: { per_page: 1 },
+    });
+
+    mockGet.mockClear();
+    await getServices(undefined, 100);
+    expect(mockGet).toHaveBeenLastCalledWith("/services", {
+      params: { per_page: 48 },
+    });
+
+    mockGet.mockClear();
+    await getServices(undefined, 12.7);
+    expect(mockGet).toHaveBeenLastCalledWith("/services", {
+      params: { per_page: 13 },
+    });
+  });
+
+  it("getServices reports its OWN name, not getProducts, when perPage is non-finite", async () => {
+    mockGet.mockResolvedValue({ data: { data: [] } });
+
+    const error = await getServices(undefined, Number.NaN).then(
+      () => null,
+      (e: unknown) => e,
+    );
+
+    expect(error).toBeInstanceOf(RangeError);
+    expect((error as Error).message).toContain("getServices");
+    expect((error as Error).message).not.toContain("getProducts");
+    expect(mockGet).not.toHaveBeenCalled();
+  });
+
   it("getServiceBySlug calls the interpolated URL and unwraps data.service", async () => {
     mockGet.mockResolvedValue({ data: { service } });
 

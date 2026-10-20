@@ -1,5 +1,8 @@
 <?php
 
+use App\Models\Asset;
+use App\Models\Brand;
+use App\Models\Category;
 use App\Models\Product;
 use App\Models\Role;
 use App\Models\User;
@@ -49,6 +52,33 @@ test('authenticated user sees their wishlisted products', function () {
     $response->assertOk()
         ->assertJsonCount(1, 'wishlist')
         ->assertJsonPath('wishlist.0.product.id', $product->id);
+});
+
+test('wishlist returns the product with its full eager-loaded shape', function () {
+    $brand = Brand::factory()->create(['name' => 'Logitech']);
+    $category = Category::factory()->create(['name' => 'Peripherals']);
+    $asset = Asset::factory()->create();
+
+    $product = Product::factory()->published()->forBrand($brand)->create();
+    $product->categories()->sync([$category->id]);
+    $product->images()->create([
+        'asset_id' => $asset->id,
+        'display_order' => 0,
+    ]);
+
+    $this->actingAs($this->user)->postJson("/api/v1/wishlist/{$product->id}")
+        ->assertOk()
+        ->assertJsonPath('is_wishlisted', true);
+
+    $response = $this->actingAs($this->user)->getJson('/api/v1/wishlist');
+
+    $response->assertOk()
+        ->assertJsonCount(1, 'wishlist')
+        ->assertJsonPath('wishlist.0.product.id', $product->id)
+        ->assertJsonPath('wishlist.0.product.brand.name', 'Logitech');
+
+    expect($response->json('wishlist.0.product.categories.0.id'))->toBe($category->id)
+        ->and($response->json('wishlist.0.product.images.0.asset.path'))->toBe($asset->path);
 });
 
 // ─── POST /wishlist/{product} ───────────────────────────────────────────────

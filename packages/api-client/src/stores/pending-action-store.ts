@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { isSafeApiUrl, isSafeInternalPath } from "../utils/safe-path";
 
 interface PendingAction {
   targetRoute: string;
@@ -20,13 +21,28 @@ const EXPIRY_MS = 5 * 60 * 1000;
 
 const STORAGE_KEY = "pending-action";
 
+function isUsableAction(value: unknown): value is Omit<PendingAction, "timestamp"> {
+  if (typeof value !== "object" || value === null) return false;
+  const action = value as Record<string, unknown>;
+  return (
+    isSafeInternalPath(action.targetRoute) &&
+    isSafeApiUrl(action.url) &&
+    typeof action.method === "string"
+  );
+}
+
 function readStoredEntry(): { action: PendingAction; timestamp: number } | null {
   try {
     const raw = sessionStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
     const entry = JSON.parse(raw) as { action: PendingAction; timestamp: number };
+    // A tampered or stale-shaped entry is discarded instead of trusted.
+    if (typeof entry?.timestamp !== "number" || !isUsableAction(entry.action)) {
+      removeStoredEntry();
+      return null;
+    }
     if (Date.now() - entry.timestamp > EXPIRY_MS) {
-      sessionStorage.removeItem(STORAGE_KEY);
+      removeStoredEntry();
       return null;
     }
     return entry;
@@ -55,6 +71,9 @@ export const usePendingActionStore = create<PendingActionState>((set, get) => ({
   pendingAction: readStoredEntry()?.action ?? null,
 
   setPendingAction: (action) => {
+    // An off-site or malformed target/url is never stored, so it can never be
+    // replayed or navigated to later.
+    if (!isUsableAction(action)) return;
     const next = { ...action, timestamp: Date.now() };
     persistEntry(next);
     set({ pendingAction: next });

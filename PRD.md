@@ -2,7 +2,7 @@
 **Project:** Pakistani Tech Store + Doorstep IT Service Booking Platform
 **Document type:** WHAT are we building
 **Status:** v1.1 — supersedes v1.0; adds Brand/Category Visual Management & Homepage Hero Banners
-**Location in repo:** `/docs/PRD.md`
+**Location in repo:** `/PRD.md` (repo root, alongside `SRS.md`, `architecture.md`, `rules.md`, `phases.md`, `design.md`, `frontend-plan.md`)
 
 ---
 
@@ -30,6 +30,8 @@ A Pakistani computer/technology store with an established physical shop has no o
 ## 4. Core Features (Modules)
 
 1. Product Catalog & Search
+   - **Featured products** — an admin can flag any product as *featured* from the admin panel. The storefront Home page uses this flag to decide which products appear in its "Featured" section; it is a merchandising flag only, and says nothing about publication (a product must still be published to appear anywhere public). The storefront decides how many featured products to show — the backend imposes no limit on how many may be featured.
+   - **Sale/discount price** — a product can carry a *compare-at price* (the "was" price). When set, the storefront Product Card shows the current price, a crossed-out original, and a computed discount percentage badge. The compare-at price must always be **strictly greater than the selling price**, and the selling price remains the only price charged at cart/checkout. No scheduling in V1: a discount is live as soon as it is saved and lasts until an admin clears it.
 2. Cart & COD Checkout
 3. Order Management (customer + admin)
 4. Wishlist
@@ -50,7 +52,7 @@ A Pakistani computer/technology store with an established physical shop has no o
 ## 5. Authentication & Access Control — Business Rule
 
 ### 5.1 Public (no auth required)
-Guests may **view**: Homepage, Products/Shop, Categories, Brands, Product Detail, Search & Filter results, Services, Service Detail, published Product/Service Reviews (read-only), Review Showcase carousel, and Homepage Hero Banners.
+Guests may **view**: Homepage, Products/Shop, Categories, Brands, Product Detail, Search & Filter results, Services, Service Detail, bookable availability (`GET /api/v1/services/{slug}/availability?date=YYYY-MM-DD`, optionally `&mode=nearest`), published Product/Service Reviews (read-only), Review Showcase carousel, and Homepage Hero Banners.
 
 ### 5.2 Protected (auth required)
 Enforced **server-side on every corresponding API endpoint**:
@@ -62,7 +64,7 @@ Add to Cart, Buy Now, Checkout, Place Order, Wishlist (add/remove/view), Service
 ### 5.4 Redirect-and-Resume Behavior
 On a blocked action: capture intended destination **and all in-progress step data** (e.g., partially completed booking wizard, item pending cart-add) → redirect to Sign In/Sign Up → on success, resume exactly where the guest left off, not the homepage.
 
-*(Open item #11 in Section 12: exact session/token mechanism — proposed and flagged, not assumed, in `architecture.md` §5.)*
+*(Section 12 item #11 is now resolved: the session mechanism is Sanctum cookie-session auth, documented in `architecture.md` §5 — an implemented engineering default awaiting client acknowledgment.)*
 
 ### 5.5 Enforcement Requirement
 Frontend route guards are UX convenience only. Every protected endpoint independently verifies the session server-side — non-negotiable, detailed in `architecture.md` and `rules.md`.
@@ -108,6 +110,8 @@ Distinct from, and never merged with, the database-backed Product/Service Review
 
 - Dedicated Admin Panel section: **Homepage Hero Banners**.
 - Admin can upload, edit, delete, reorder, publish/unpublish, and configure each banner.
+- **Each banner may carry optional overlay text** — a `headline` (max 120 chars) and a `subtitle` (max 255 chars), both optional. When both are absent the banner is **image only**, which is the normal case and remains fully supported. This makes the "optional overlay text" in `design.md` §3.7 authorable by an admin rather than a hard-coded front-end string.
+- Overlay text is plain text, not HTML: it is rejected with a validation error if it contains an HTML tag, so the stored value can never hold markup. Surrounding whitespace is trimmed, and sending an empty value clears the text back to the image-only state.
 - **Each banner is linked to a target category via a real database relationship (foreign key)** — not a hard-coded URL. If the admin later changes which category a banner points to, the destination updates automatically with no code change.
 - Public behavior:
   - Auto-slides horizontally.
@@ -125,6 +129,7 @@ Distinct from, and never merged with, the database-backed Product/Service Review
 |---|---|
 | Shipping fee | Admin-configurable |
 | Minimum booking notice | Admin-configurable |
+| Maximum booking advance window | Admin-configurable; how far ahead a customer may pick a date (default 60 days) |
 | Service buffer time | Admin-configurable |
 | Cancellation/reschedule cutoff | Admin-editable window; hard stop at "Technician On The Way" is a **system rule**, not admin-editable |
 | Business hours & holidays | Per-weekday hours + holiday/blocked-date calendar |
@@ -164,8 +169,8 @@ Distinct from, and never merged with, the database-backed Product/Service Review
 | # | Decision | Status |
 |---|---|---|
 | 1–10 | (Wishlist, guest checkout, shipping fee, serviceable areas, booking file upload, notifications, min. booking notice, review eligibility, taxonomy ownership) | ✅ Resolved — see Section 10 and `00-PRODUCT-DEFINITION.md` |
-| 11 | Exact session/token strategy | Proposed default in `architecture.md` §5, flagged for confirmation |
-| 12 | Exact scope of "resume after login" state | Default: preserve **all** entered step data, not just current step — flagged for confirmation |
+| 11 | Exact session/token strategy | ✅ Resolved (engineering default, implemented and tested): Sanctum cookie-session — see `architecture.md` §5 — pending client acknowledgment |
+| 12 | Exact scope of "resume after login" state | ✅ Resolved: all entered step data preserved; auto-replay limited per the `architecture.md` §5.2 replay policy |
 | 13 | Review Showcase image limits (count, aspect ratio, file size cap) | ✅ Resolved (engineering default) — reuses existing Asset validation (jpg/jpeg/png/webp, 2MB, FileUploadService), max dimensions defaulted to 2000×2000 (product preset, not separately specified in SRS §3.4), no hard cap on item count (a frontend carousel-display concern, not backend). Flagged for eventual client confirmation, no urgency — consistent with this project's existing default-setting precedent. |
 | 14 | Category hierarchy | ✅ Resolved — **parent/child subcategories required in V1** (not deferred to future scope) |
 | 15 | Homepage Hero Banner count limit and recommended image dimensions | ✅ Resolved — defaults in `design.md`/`SRS.md` accepted |
@@ -174,6 +179,7 @@ Distinct from, and never merged with, the database-backed Product/Service Review
 | 18 | Hostinger plan tier | ✅ Confirmed — SSH + Composer + PHP 8.3 available |
 | 19 | Review moderation workflow (customer-review auto-publish vs. review-before-publish) | ✅ Resolved — reviews auto-publish on submission (verified purchase/booking is the gate); admin can unpublish/republish any review afterward. Confirmed by client during Phase 10 planning. |
 | 20 | Notification preference model: website notifications always recorded (not user-toggleable); email sending gated by a single global BusinessSetting `email_notifications_enabled` (default true), admin-wide not per-customer — confirmed by client. | ✅ Resolved — confirmed by client during Phase 11 planning. |
+| 21 | Product sale/discount display | ✅ Resolved (engineering default, implemented + tested) — nullable `products.compare_at_price` ("was" price) with a computed, appended `discount_percent`; must be strictly greater than the selling price (validated at create and update); selling price remains the only price used for cart/checkout/orders; storefront shows strikethrough + percentage badge; no scheduling in V1 (live on save, cleared by admin). Flagged for eventual client confirmation, consistent with existing default-setting precedent. |
 
 ---
 

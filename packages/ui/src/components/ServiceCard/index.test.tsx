@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { Service } from "@ecommerce/api-client";
 import { describe, expect, it, vi } from "vitest";
@@ -55,12 +55,12 @@ describe("ServiceCard", () => {
     expect(screen.getByText("2 hrs")).toBeInTheDocument();
   });
 
-  it("calls onBookNow when Book Now is clicked", async () => {
+  it("calls onBookNow when Book Service is clicked", async () => {
     const user = userEvent.setup();
     const onBookNow = vi.fn();
     render(<ServiceCard service={makeService()} onBookNow={onBookNow} />);
 
-    await user.click(screen.getByRole("button", { name: "Book Now" }));
+    await user.click(screen.getByRole("button", { name: "Book Service" }));
 
     expect(onBookNow).toHaveBeenCalledTimes(1);
   });
@@ -88,6 +88,87 @@ describe("ServiceCard", () => {
 
     expect(screen.getByRole("status")).toBeInTheDocument();
     expect(screen.queryByText("Laptop Screen Repair")).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Book Now" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Book Service" })).not.toBeInTheDocument();
+  });
+
+  it("renders category badge when provided and nothing when omitted", () => {
+    const { rerender } = render(<ServiceCard service={makeService()} category="Hardware" />);
+
+    expect(screen.getByText("Hardware")).toBeInTheDocument();
+
+    rerender(<ServiceCard service={makeService()} />);
+
+    expect(screen.queryByText("Hardware")).not.toBeInTheDocument();
+  });
+
+  // ─── href (TASK B2d-2) ────────────────────────────────────────────────────
+
+  describe("optional href", () => {
+    it("renders the name/description area as a real anchor to href when it is given", () => {
+      render(
+        <ServiceCard
+          service={makeService()}
+          href="/service/laptop-screen-repair"
+        />,
+      );
+
+      const link = screen.getByRole("link");
+      expect(link).toHaveAttribute("href", "/service/laptop-screen-repair");
+      expect(
+        screen.getByText("Laptop Screen Repair").closest("a"),
+      ).toHaveAttribute("href", "/service/laptop-screen-repair");
+    });
+
+    it("keeps the old placeholder anchor and click handling when no href is given", async () => {
+      const user = userEvent.setup();
+      const onViewDetails = vi.fn();
+      render(
+        <ServiceCard service={makeService()} onViewDetails={onViewDetails} />,
+      );
+
+      expect(screen.getByRole("link")).toHaveAttribute("href", "#");
+
+      await user.click(screen.getByText("Laptop Screen Repair"));
+      expect(onViewDetails).toHaveBeenCalledTimes(1);
+    });
+
+    it("never intercepts modified clicks so the real href reaches the browser", () => {
+      const { container } = render(
+        <ServiceCard
+          service={makeService()}
+          href="/service/laptop-screen-repair"
+          onViewDetails={vi.fn()}
+        />,
+      );
+
+      const link = container.querySelector("a") as HTMLAnchorElement;
+      expect(link).not.toBeNull();
+
+      const modified: MouseEventInit[] = [
+        { ctrlKey: true },
+        { metaKey: true },
+        { shiftKey: true },
+        { altKey: true },
+        { button: 1 },
+      ];
+
+      for (const init of modified) {
+        let defaultPrevented: boolean | undefined;
+        container.addEventListener("click", (event) => {
+          defaultPrevented = event.defaultPrevented;
+        });
+        fireEvent.click(link, init);
+        // The whole reason a real href exists: ctrl/cmd-click (open in new
+        // tab), middle-click and friends must reach the browser's own link
+        // handling and never be swallowed by the router.
+        expect(defaultPrevented).toBe(false);
+      }
+    });
+
+    it("renders no main-action link at all when neither href nor onViewDetails is given", () => {
+      render(<ServiceCard service={makeService()} />);
+
+      expect(screen.queryByRole("link")).not.toBeInTheDocument();
+    });
   });
 });

@@ -26,6 +26,7 @@ use App\Http\Controllers\Api\V1\ProfileController;
 use App\Http\Controllers\Api\V1\ReviewController as PublicReviewController;
 use App\Http\Controllers\Api\V1\ReviewShowcaseController as PublicReviewShowcaseController;
 use App\Http\Controllers\Api\V1\ServiceController as PublicServiceController;
+use App\Http\Controllers\Api\V1\ShippingFeeController;
 use App\Http\Controllers\Api\V1\WishlistController;
 use App\Models\BusinessSetting;
 use Illuminate\Support\Facades\Route;
@@ -49,6 +50,18 @@ Route::prefix('v1')->group(function () {
     Route::get('/services', [PublicServiceController::class, 'index']);
     Route::get('/services/{slug}', [PublicServiceController::class, 'show']);
 
+    // Public availability for the booking wizard's date/time step (Phase 7), e.g.
+    // GET /api/v1/services/{slug}/availability?date=2026-09-21[&mode=nearest].
+    // No auth, same as the reads above. Rate limited because it is unauthenticated
+    // and every call walks business hours plus live holds and bookings - an
+    // unthrottled version is both a scraping target and a cheap way to hammer the
+    // scheduling tables. ?mode=nearest rides this route rather than adding a
+    // second endpoint (phases.md Phase 7 lists nearest-slot suggestion as part of
+    // the engine). Missing vs unpublished slugs 404 identically, as above.
+    Route::get('/services/{slug}/availability', [PublicServiceController::class, 'availability'])
+        ->middleware('throttle:service-availability')
+        ->name('services.availability');
+
     // Product/Service reviews public reads (PRD §11 sidebars) — published
     // reviews of a published target, paginated, no auth. The 404 for a
     // missing OR unpublished target mirrors the detail controllers (an
@@ -68,6 +81,17 @@ Route::prefix('v1')->group(function () {
     // admin-defined display order, paginated. Published items only, no auth.
     // Each item is its own entity (never joined to the reviews table).
     Route::get('/review-showcase', [PublicReviewShowcaseController::class, 'index']);
+
+    // Public shipping-fee read (D2, owner decision): checkout shows the fee
+    // BEFORE an order is placed, so this exposes the same flat value
+    // OrderService stores as shipping_fee — through the same service. Exactly
+    // one field, no other business setting. Read live (no cache) so an admin
+    // change shows immediately. Throttled like the other unauthenticated read
+    // (the availability endpoint): it is public and cheap, but a named limiter
+    // keeps it from being a free hammering surface.
+    Route::get('/shipping-fee', [ShippingFeeController::class, 'show'])
+        ->middleware('throttle:shipping-fee')
+        ->name('shipping-fee.show');
 
     // Auth (session-based Sanctum SPA auth — session handled once by
     // statefulApi()'s EnsureFrontendRequestsAreStateful on the api group)

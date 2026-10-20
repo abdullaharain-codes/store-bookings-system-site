@@ -20,7 +20,7 @@ export const EmptyState = forwardRef<HTMLDivElement, EmptyStateProps>(
         )}
         {...props}
       >
-        <h2 className="text-[var(--font-size-lg)] font-[var(--font-weight-medium)] text-[var(--color-text-primary)]">
+        <h2 className="text-[length:var(--font-size-lg)] font-[var(--font-weight-medium)] text-[var(--color-text-primary)]">
           {title}
         </h2>
         {description && (

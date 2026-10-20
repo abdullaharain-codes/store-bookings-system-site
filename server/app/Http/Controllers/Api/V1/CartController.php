@@ -41,7 +41,7 @@ class CartController extends Controller
         );
 
         return response()->json([
-            'cart_item' => $item->load('product'),
+            'cart_item' => $item->load(['product.brand', 'product.categories', 'product.images.asset']),
         ], 201);
     }
 
@@ -61,7 +61,7 @@ class CartController extends Controller
         );
 
         return response()->json([
-            'cart_item' => $item->load('product'),
+            'cart_item' => $item->load(['product.brand', 'product.categories', 'product.images.asset']),
             'message' => 'Cart item updated.',
         ]);
     }

@@ -30,12 +30,24 @@ class ProductFactory extends Factory
             'stock_quantity' => fake()->numberBetween(0, 100),
             'brand_id' => null,
             'is_published' => false,
+            // Merchandising flag (BE2): products are not featured by default.
+            'is_featured' => false,
         ];
     }
 
     public function published(): static
     {
         return $this->state(fn () => ['is_published' => true]);
+    }
+
+    /**
+     * Admin-set merchandising flag (BE2). Independent of published(), because
+     * "is this featured" and "is this live" are separate questions — a draft can
+     * be featured, and it is the public filter that then hides it.
+     */
+    public function featured(): static
+    {
+        return $this->state(fn () => ['is_featured' => true]);
     }
 
     public function forBrand(Brand $brand): static

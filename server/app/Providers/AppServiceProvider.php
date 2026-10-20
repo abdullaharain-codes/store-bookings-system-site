@@ -94,5 +94,27 @@ class AppServiceProvider extends ServiceProvider
                 ? Limit::perMinute(10)->by('user:'.$request->user()->id)
                 : Limit::none();
         });
+
+        // SERVICE AVAILABILITY — guards the unauthenticated booking-wizard
+        // availability endpoint: 60/minute per IP. Guests browsing it have no
+        // session to key off, so the IP is the only honest identity, and the
+        // budget is deliberately higher than the 5/minute auth guards because a
+        // single customer legitimately walks several dates while comparing them.
+        // Keyed by IP *and* slug so one caller hammering one noisy service cannot
+        // exhaust the budget of callers browsing a different service.
+        RateLimiter::for('service-availability', function (Request $request) {
+            return Limit::perMinute(60)->by(
+                'service-availability:'.$request->ip().':'.$request->route('slug')
+            );
+        });
+
+        // SHIPPING FEE — guards the public, unauthenticated shipping-fee read
+        // (D2) that checkout renders before any order exists. Guests have no
+        // session to key off, so the IP is the honest identity, and the budget
+        // matches the availability read (60/minute): a customer legitimately
+        // reloads cart/checkout while a session toggles.
+        RateLimiter::for('shipping-fee', function (Request $request) {
+            return Limit::perMinute(60)->by('shipping-fee:'.$request->ip());
+        });
     }
 }

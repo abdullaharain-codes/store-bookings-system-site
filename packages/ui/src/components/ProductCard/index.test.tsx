@@ -12,9 +12,12 @@ function makeProduct(overrides: Partial<Product> = {}): Product {
     sku: "LAT-1",
     description: "A productivity laptop.",
     price: "150000",
+    compare_at_price: null,
+    discount_percent: null,
     stock_quantity: 10,
     brand_id: 1,
     is_published: true,
+    is_featured: false,
     brand: {
       id: 1,
       name: "Dell",
@@ -37,6 +40,8 @@ function makeProduct(overrides: Partial<Product> = {}): Product {
           disk: "public",
           path: "/storage/products/latitude.jpg",
           thumbnail_path: null,
+          url: "/storage/products/latitude.jpg",
+          thumbnail_url: null,
           original_name: "latitude.jpg",
           mime_type: "image/jpeg",
           size: 1024,
@@ -91,22 +96,44 @@ describe("ProductCard", () => {
     expect(screen.getByText("In Stock")).toBeInTheDocument();
   });
 
-  it("renders discount badge and strikethrough only when compareAtPrice exceeds price", () => {
+  it("renders discount badge and strikethrough when the product carries a discount", () => {
     const { rerender } = render(
-      <ProductCard product={makeProduct()} compareAtPrice="200000" />
+      <ProductCard
+        product={makeProduct({
+          price: "150000",
+          compare_at_price: "200000",
+          discount_percent: 25,
+        })}
+      />
     );
 
     expect(screen.getByText("-25%")).toBeInTheDocument();
-    const original = screen.getByText("Rs. 200,000");
+    const original = screen.getByText(/Rs\. 200,000$/);
     expect(original).toBeInTheDocument();
     expect(original).toHaveClass("line-through");
 
-    rerender(<ProductCard product={makeProduct()} />);
-    expect(screen.queryByText("-25%")).not.toBeInTheDocument();
-    expect(screen.queryByText("Rs. 200,000")).not.toBeInTheDocument();
+    // The visually-hidden label keeps the aria read-out "Original price:
+    // Rs. 200,000" instead of an unexplained crossed-out number.
+    expect(screen.getByText("Original price:")).toBeInTheDocument();
 
-    rerender(<ProductCard product={makeProduct({ price: "200000" })} compareAtPrice="200000" />);
+    // No discount fields -> no discount UI at all.
+    rerender(<ProductCard product={makeProduct()} />);
     expect(screen.queryByText(/^-\d+%$/)).not.toBeInTheDocument();
+    expect(screen.queryByText("Original price:")).not.toBeInTheDocument();
+
+    // compare_at_price present but discount_percent null (server computed no
+    // discount): the card must branch on the server value, not the raw price.
+    rerender(
+      <ProductCard
+        product={makeProduct({
+          price: "200000",
+          compare_at_price: "200000",
+          discount_percent: null,
+        })}
+      />
+    );
+    expect(screen.queryByText(/^-\d+%$/)).not.toBeInTheDocument();
+    expect(screen.queryByText("Original price:")).not.toBeInTheDocument();
   });
 
   it("renders rating stars and review count when averageRating is provided", () => {
@@ -194,5 +221,72 @@ describe("ProductCard", () => {
     expect(image.className).toContain("group-hover:scale-105");
     expect(image.className).toContain("mix-blend-darken");
     expect(image.className).toContain("object-contain");
+  });
+
+  // ─── href (TASK B2c) ──────────────────────────────────────────────────────
+
+  describe("optional href", () => {
+    it("renders the image and title as real links to href when it is given", () => {
+      render(<ProductCard product={makeProduct()} href="/product/latitude-7450" />);
+
+      // Both main-action areas (the image target and the title block) must
+      // carry the destination, not just one of them.
+      const links = screen.getAllByRole("link");
+      expect(links.length).toBeGreaterThanOrEqual(2);
+      for (const link of links) {
+        expect(link).toHaveAttribute("href", "/product/latitude-7450");
+      }
+      expect(screen.getByAltText("Latitude 7450").closest("a")).toHaveAttribute(
+        "href",
+        "/product/latitude-7450",
+      );
+      expect(screen.getByText("Latitude 7450").closest("a")).toHaveAttribute(
+        "href",
+        "/product/latitude-7450",
+      );
+    });
+
+    it("keeps href=\"#\" on the main action when no href is given", () => {
+      const onViewDetails = vi.fn();
+      render(<ProductCard product={makeProduct()} onViewDetails={onViewDetails} />);
+
+      // Unchanged legacy behaviour: the anchor is still a click-handler
+      // placeholder, because that is what every pre-B2c caller passes.
+      const links = screen.getAllByRole("link");
+      expect(links.length).toBeGreaterThanOrEqual(2);
+      for (const link of links) {
+        expect(link).toHaveAttribute("href", "#");
+      }
+    });
+
+    it("still fires onViewDetails alongside href so an SPA router can intercept the click", async () => {
+      const user = userEvent.setup();
+      const onViewDetails = vi.fn();
+      render(
+        <ProductCard
+          product={makeProduct()}
+          href="/product/latitude-7450"
+          onViewDetails={onViewDetails}
+        />,
+      );
+
+      await user.click(screen.getByText("Latitude 7450"));
+
+      // The href is in the DOM for crawlers/middle-click, but the click must not
+      // become a full document navigation in an SPA.
+      expect(onViewDetails).toHaveBeenCalledTimes(1);
+      expect(screen.getByText("Latitude 7450").closest("a")).toHaveAttribute(
+        "href",
+        "/product/latitude-7450",
+      );
+    });
+
+    it("renders no main-action link at all when neither href nor onViewDetails is given", () => {
+      render(<ProductCard product={makeProduct()} />);
+
+      // No handler and no href means there is nothing to link to, so the wrapper
+      // must not become a focusable dead link.
+      expect(screen.queryByRole("link")).not.toBeInTheDocument();
+    });
   });
 });

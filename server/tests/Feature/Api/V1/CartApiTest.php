@@ -1,7 +1,10 @@
 <?php
 
+use App\Models\Asset;
+use App\Models\Brand;
 use App\Models\Cart;
 use App\Models\CartItem;
+use App\Models\Category;
 use App\Models\Product;
 use App\Models\Role;
 use App\Models\User;
@@ -62,6 +65,32 @@ test('authenticated user sees their cart items with products eager-loaded', func
         ->assertJsonPath('cart.items.0.product.id', $product->id);
 });
 
+test('cart items carry the product with its full eager-loaded shape', function () {
+    $brand = Brand::factory()->create(['name' => 'Logitech']);
+    $category = Category::factory()->create(['name' => 'Peripherals']);
+    $asset = Asset::factory()->create();
+
+    $product = Product::factory()->published()->forBrand($brand)->create(['stock_quantity' => 10]);
+    $product->categories()->sync([$category->id]);
+    $product->images()->create([
+        'asset_id' => $asset->id,
+        'display_order' => 0,
+    ]);
+
+    $this->actingAs($this->user)->postJson('/api/v1/cart/items', [
+        'product_id' => $product->id,
+        'quantity' => 1,
+    ])->assertCreated();
+
+    $response = $this->actingAs($this->user)->getJson('/api/v1/cart');
+
+    $response->assertOk()
+        ->assertJsonPath('cart.items.0.product.brand.name', 'Logitech');
+
+    expect($response->json('cart.items.0.product.categories.0.id'))->toBe($category->id)
+        ->and($response->json('cart.items.0.product.images.0.asset.path'))->toBe($asset->path);
+});
+
 // ─── POST /cart/items ───────────────────────────────────────────────────────
 
 test('authenticated user can add an item to their cart', function () {
@@ -81,6 +110,37 @@ test('authenticated user can add an item to their cart', function () {
         'product_id' => $product->id,
         'quantity' => 3,
     ]);
+});
+
+test('add and update cart_item responses carry the product full shape', function () {
+    $brand = Brand::factory()->create(['name' => 'Logitech']);
+    $category = Category::factory()->create(['name' => 'Peripherals']);
+    $asset = Asset::factory()->create();
+
+    $product = Product::factory()->published()->forBrand($brand)->create(['stock_quantity' => 10]);
+    $product->categories()->sync([$category->id]);
+    $product->images()->create([
+        'asset_id' => $asset->id,
+        'display_order' => 0,
+    ]);
+
+    $added = $this->actingAs($this->user)->postJson('/api/v1/cart/items', [
+        'product_id' => $product->id,
+        'quantity' => 1,
+    ])->assertCreated();
+
+    $cartItemId = $added->json('cart_item.id');
+
+    expect($added->json('cart_item.product.brand.name'))->toBe('Logitech')
+        ->and($added->json('cart_item.product.categories.0.id'))->toBe($category->id)
+        ->and($added->json('cart_item.product.images.0.asset.path'))->toBe($asset->path);
+
+    $updated = $this->actingAs($this->user)->patchJson("/api/v1/cart/items/{$cartItemId}", [
+        'quantity' => 3,
+    ])->assertOk();
+
+    expect($updated->json('cart_item.product.brand.name'))->toBe('Logitech')
+        ->and($updated->json('cart_item.product.images.0.asset.path'))->toBe($asset->path);
 });
 
 test('addItem with hold_status active on fresh add', function () {

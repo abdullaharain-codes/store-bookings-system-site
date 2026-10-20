@@ -11,6 +11,8 @@ function makeAsset(overrides: Partial<Asset> = {}): Asset {
     disk: "uploads",
     path: "categories/laptops-logo.jpg",
     thumbnail_path: "categories/thumbs/laptops-logo.jpg",
+    url: "/storage/uploads/categories/laptops-logo.jpg",
+    thumbnail_url: "/storage/uploads/categories/thumbs/laptops-logo.jpg",
     original_name: "laptops-logo.jpg",
     mime_type: "image/jpeg",
     size: 2048,
@@ -37,49 +39,44 @@ function makeCategory(overrides: Partial<Category> = {}): Category {
 }
 
 describe("CategoryCard", () => {
-  it("renders the category name as a heading and a placeholder visual when logo_asset is null", () => {
-    const { container } = render(<CategoryCard category={makeCategory()} />);
+  it("renders the category name", () => {
+    render(<CategoryCard category={makeCategory()} />);
 
-    expect(screen.getByRole("heading", { name: "Laptops" })).toBeInTheDocument();
-    expect(container.querySelector('[aria-hidden="true"]')).not.toBeNull();
+    expect(screen.getByText("Laptops")).toBeInTheDocument();
   });
 
-  it("renders the real logo image with an alt equal to the category name when logo_asset is present", () => {
+  it("renders the logo image as decorative (alt='' + src) when logo_asset is present", () => {
     const category = makeCategory({ logo_asset: makeAsset() });
+    const { container } = render(<CategoryCard category={category} />);
 
-    render(<CategoryCard category={category} />);
-
-    const img = screen.getByRole("img", { name: "Laptops" });
-    expect(img).toHaveAttribute("src", "categories/laptops-logo.jpg");
+    const img = container.querySelector("img");
+    expect(img).not.toBeNull();
+    expect(img).toHaveAttribute("src", "/storage/uploads/categories/laptops-logo.jpg");
+    expect(img).toHaveAttribute("alt", "");
   });
 
-  it("renders a neutral placeholder, never a broken image, when logo_asset is absent", () => {
+  it("omits the image slot entirely (text-only pill) when logo_asset is absent", () => {
     const { container } = render(<CategoryCard category={makeCategory()} />);
 
     expect(container.querySelector("img")).toBeNull();
-    expect(container.querySelector('[aria-hidden="true"]')).not.toBeNull();
+    expect(screen.getByText("Laptops")).toBeInTheDocument();
   });
 
-  it("renders itemCount as secondary text when provided and nothing when omitted", () => {
-    const { rerender } = render(<CategoryCard category={makeCategory()} itemCount={24} />);
-    expect(screen.getByText("24 products")).toBeInTheDocument();
-
-    rerender(<CategoryCard category={makeCategory()} />);
-    expect(screen.queryByText(/products?/i)).not.toBeInTheDocument();
-  });
-
-  it("treats the entire card as a single click target via onActivate", async () => {
+  it("treats the entire pill as a single click target via onActivate", async () => {
     const user = userEvent.setup();
     const onActivate = vi.fn();
     const { container } = render(
-      <CategoryCard category={makeCategory()} onActivate={onActivate} />
+      <CategoryCard
+        category={makeCategory({ logo_asset: makeAsset() })}
+        onActivate={onActivate}
+      />
     );
 
-    await user.click(screen.getByRole("heading", { name: "Laptops" }));
+    await user.click(screen.getByText("Laptops"));
     expect(onActivate).toHaveBeenCalledTimes(1);
 
-    const placeholder = container.querySelector('[aria-hidden="true"]') as Element;
-    await user.click(placeholder);
+    const img = container.querySelector("img") as Element;
+    await user.click(img);
     expect(onActivate).toHaveBeenCalledTimes(2);
   });
 
@@ -87,6 +84,6 @@ describe("CategoryCard", () => {
     render(<CategoryCard category={makeCategory()} isLoading />);
 
     expect(screen.getByRole("status")).toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "Laptops" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Laptops")).not.toBeInTheDocument();
   });
 });

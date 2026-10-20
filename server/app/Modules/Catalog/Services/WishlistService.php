@@ -35,12 +35,15 @@ class WishlistService
     }
 
     /**
-     * The user's full wishlist, eager-loading products (rules.md §10).
+     * The user's full wishlist, eager-loading the product's renderable shape
+     * (brand, categories, images+assets) — the same nested pattern as
+     * EloquentProductRepository, so wishlist items carry a complete Product
+     * JSON without N+1 queries (rules.md §10).
      */
     public function list(User $user): Collection
     {
         return Wishlist::where('user_id', $user->id)
-            ->with('product')
+            ->with(['product.brand', 'product.categories', 'product.images.asset'])
             ->get();
     }
 

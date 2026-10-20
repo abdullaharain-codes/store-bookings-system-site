@@ -118,6 +118,51 @@ class EloquentProductRepository implements ProductRepositoryInterface
                 fn ($query, int $brandId) => $query->where('brand_id', $brandId)
             )
             ->when(
+                // `featured` (BE2). Two subtleties, both caught by the BE2
+                // tests rather than by reading the code:
+                //
+                // 1. array_key_exists, not isset() — an explicit false must
+                //    still filter (to non-featured) instead of being ignored as
+                //    though it were absent.
+                // 2. The callback takes NO value argument on purpose.
+                //    Builder::when() passes the CONDITION it was given as the
+                //    second callback argument, not the filter's value — so
+                //    fn ($q, $featured) would bind $featured to `true` every
+                //    single time and quietly turn `?featured=0` into
+                //    "featured only". The value is read from the captured
+                //    $filters array instead.
+                array_key_exists('featured', $filters),
+                fn ($query) => $query->where('is_featured', (bool) $filters['featured'])
+            )
+            ->when(
+                $filters['min_price'] ?? null,
+                fn ($query, float $min) => $query->where('price', '>=', $min)
+            )
+            ->when(
+                $filters['max_price'] ?? null,
+                fn ($query, float $max) => $query->where('price', '<=', $max)
+            )
+            ->when(
+                // `in_stock` (BE4). Same array_key_exists subtlety as
+                // `featured` above: an explicit FALSE still filters (to
+                // out-of-stock) instead of being ignored as absent.
+                //
+                // The predicate mirrors StockHoldService::availableStock() —
+                // stock_quantity minus the SUM of quantity on active
+                // (unexpired) cart_item holds — as a correlated subquery, so
+                // "in stock" is live availability, not a stale column read.
+                array_key_exists('in_stock', $filters),
+                fn ($query) => $query->whereRaw(
+                    'stock_quantity '.($filters['in_stock'] ? '>' : '<=').
+                    ' COALESCE(('.
+                    'SELECT SUM(quantity) FROM cart_items '.
+                    'WHERE cart_items.product_id = products.id '.
+                    'AND cart_items.hold_expires_at > ?'.
+                    '), 0)',
+                    [now()],
+                )
+            )
+            ->when(
                 $filters['search'] ?? null,
                 fn ($query, string $search) => $query->where(function ($query) use ($search) {
                     $query->where('name', 'like', "%{$search}%")
