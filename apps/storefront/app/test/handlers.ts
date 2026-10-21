@@ -364,6 +364,15 @@ export function setProductDetailSource(products: Product[]): void {
   productDetailSource = products;
 }
 
+/**
+ * The product pool the cart/order handlers snapshot from. Placing an order
+ * copies name/sku/price off this same pool, so an order's line items match the
+ * product the cart was showing (OrderService snapshots the product row).
+ */
+export function getProductDetailPool(): Product[] {
+  return productDetailSource;
+}
+
 /** Slugs the detail endpoint was asked for, in call order. */
 export const productDetailRequests: { slug: string }[] = [];
 
@@ -450,6 +459,15 @@ let shippingFeeSource = testShippingFee;
 
 export function setShippingFeeSource(fee: string): void {
   shippingFeeSource = fee;
+}
+
+/**
+ * The live flat fee. Order placement in handlers-checkout.ts reads this same
+ * source, so an order's shipping_fee always equals what GET /shipping-fee
+ * served — the invariant OrderService guarantees by reading one service.
+ */
+export function getShippingFeeSource(): string {
+  return shippingFeeSource;
 }
 
 /**
@@ -609,6 +627,23 @@ export function setCartItemsSource(items: CartItem[]): void {
   cartItemsSource = items;
 }
 
+/**
+ * The current in-memory cart pool. The checkout handlers live in a separate
+ * module (handlers-checkout.ts) and read/empty this same source so placing an
+ * order clears exactly the cart a preceding GET /cart returned. The backing
+ * `let` stays private to avoid a second writer bypassing the setter.
+ */
+export function getCartItemsSource(): CartItem[] {
+  return cartItemsSource;
+}
+
+export function clearCartItemsSource(): void {
+  cartItemsSource = [];
+}
+
+/** Bodies of every PATCH /cart/items/:id, in call order (wire evidence). */
+export const cartPatchBodies: { id: number; quantity: number }[] = [];
+
 /** Upsert a product into the in-memory cart, mirroring CartService.addItem. */
 export function addToCartSource(productId: number, quantity: number): void {
   const existing = cartItemsSource.find((item) => item.product_id === productId);
@@ -659,6 +694,11 @@ export const callCounts = {
   banners: 0,
   reviewShowcase: 0,
   shippingFee: 0,
+  addresses: 0,
+  addressCreate: 0,
+  orders: 0,
+  orderShow: 0,
+  orderPlace: 0,
   reset() {
     this.login = 0;
     this.register = 0;
@@ -673,6 +713,11 @@ export const callCounts = {
     this.banners = 0;
     this.reviewShowcase = 0;
     this.shippingFee = 0;
+    this.addresses = 0;
+    this.addressCreate = 0;
+    this.orders = 0;
+    this.orderShow = 0;
+    this.orderPlace = 0;
   },
 };
 
@@ -1108,6 +1153,9 @@ export const handlers = [
     const id = Number(params.id);
     const body = (await request.json()) as { quantity?: number };
     const quantity = body.quantity;
+    // Recorded AFTER parsing but BEFORE the forced-error branch, so a test can
+    // still read the exact body of a request that was rejected.
+    cartPatchBodies.push({ id, quantity: quantity as number });
 
     if (
       typeof quantity !== "number" ||
@@ -1132,8 +1180,19 @@ export const handlers = [
       });
     }
 
+    // CartService::updateQuantity renews the hold even when the quantity is
+    // unchanged (no early return), so a PATCH is what "Reserve again" uses to
+    // flip an expired line back to active: hold_expires_at -> now + 30 min.
+    const renewedHoldExpiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
     cartItemsSource = cartItemsSource.map((item) =>
-      item.id === id ? { ...item, quantity } : item,
+      item.id === id
+        ? {
+            ...item,
+            quantity,
+            hold_expires_at: renewedHoldExpiresAt,
+            hold_status: "active" as const,
+          }
+        : item,
     );
     const updated = cartItemsSource.find((item) => item.id === id)!;
     return HttpResponse.json({

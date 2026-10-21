@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router";
 import {
@@ -10,19 +10,27 @@ import {
 } from "@ecommerce/api-client";
 import {
   Badge,
+  Button,
   EmptyState,
   ErrorState,
   LoadingSkeleton,
   QuantityInput,
+  buttonStyles,
   formatPrice,
 } from "@ecommerce/ui";
 import { siteConfig } from "../../config/site";
 import { queryKeys } from "../../hooks/query-keys";
+import { userMessageFor } from "../../lib/api-error";
 import { multiplyMoney, sumMoney } from "../../lib/money";
 import { useAnnounce } from "../common/Announcer";
 import { PageContainer } from "../common/PageContainer";
 import { PageHeading } from "../common/PageHeading";
-import { cartRemoveLabel, cartRemovedAnnouncement } from "./cart-copy";
+import {
+  CART_RESERVE_LABEL,
+  CART_RESERVED_ANNOUNCEMENT,
+  cartRemoveLabel,
+  cartRemovedAnnouncement,
+} from "./cart-copy";
 
 /** The one visible h1, in every state (loading, error, empty, populated). */
 export const CART_TITLE = "Cart";
@@ -43,8 +51,7 @@ export const CART_CHECKOUT_LABEL = "Proceed to checkout";
 export const CART_IMAGE_PLACEHOLDER = "No image";
 export const CART_FALLBACK_PRODUCT_NAME = "Product";
 export const CART_HOLD_ACTIVE_LABEL = "Reserved";
-export const CART_HOLD_EXPIRED_MESSAGE =
-  "Your reservation for this item expired. Set the quantity again to re-confirm it.";
+export const CART_HOLD_EXPIRED_MESSAGE = `Your reservation for this item expired. Use ${CART_RESERVE_LABEL} to re-confirm it.`;
 export const CART_UPDATED_ANNOUNCEMENT = "Cart updated.";
 export const CART_QUANTITY_ERROR_FALLBACK =
   "We couldn't update that quantity. Please try again.";
@@ -54,27 +61,6 @@ export const CART_REMOVE_ERROR_FALLBACK =
 /** Accessible name of a line's quantity field, so lines never collide. */
 function cartQuantityLabel(name: string): string {
   return `Quantity for ${name}`;
-}
-
-/**
- * A 409/422 carries the server's own stock message verbatim (CartService's
- * "Only N left in stock..." reach the shopper); anything else collapses to the
- * caller's generic line so raw error text is never rendered.
- */
-function cartErrorMessage(error: unknown, fallback: string): string {
-  if (typeof error === "object" && error !== null) {
-    const err = error as {
-      response?: { status?: unknown; data?: { message?: unknown } };
-    };
-    const status =
-      typeof err.response?.status === "number" ? err.response.status : 0;
-    const message =
-      typeof err.response?.data?.message === "string"
-        ? err.response.data.message
-        : "";
-    if ((status === 409 || status === 422) && message) return message;
-  }
-  return fallback;
 }
 
 /**
@@ -97,6 +83,18 @@ export function CartView() {
   // QuantityInput so a rejected value snaps back to the server quantity.
   const [lineErrors, setLineErrors] = useState<Record<number, string>>({});
   const [resetTokens, setResetTokens] = useState<Record<number, number>>({});
+  // The remount that resets the field also destroys whatever had focus (the
+  // +/- button the shopper pressed), dropping focus to <body>. Remember WHICH
+  // line needs its focus back and restore it to that line's quantity input
+  // once the remounted DOM is committed.
+  const focusAfterResetRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    const id = focusAfterResetRef.current;
+    if (id === null) return;
+    focusAfterResetRef.current = null;
+    document.getElementById(`cart-item-quantity-${id}`)?.focus();
+  }, [resetTokens]);
 
   const cartQuery = useQuery({
     queryKey: queryKeys.cart,
@@ -107,8 +105,11 @@ export function CartView() {
   const items = cartQuery.data?.cart.items ?? [];
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, quantity }: { id: number; quantity: number }) =>
-      updateCartItem(id, quantity),
+    mutationFn: (variables: {
+      id: number;
+      quantity: number;
+      intent: "change" | "reserve";
+    }) => updateCartItem(variables.id, variables.quantity),
     onSuccess: (_data, variables) => {
       setLineErrors((previous) => {
         const next = { ...previous };
@@ -116,11 +117,16 @@ export function CartView() {
         return next;
       });
       queryClient.invalidateQueries({ queryKey: queryKeys.cart });
-      announce(CART_UPDATED_ANNOUNCEMENT);
+      announce(
+        variables.intent === "reserve"
+          ? CART_RESERVED_ANNOUNCEMENT
+          : CART_UPDATED_ANNOUNCEMENT
+      );
     },
     onError: (error, variables) => {
-      const message = cartErrorMessage(error, CART_QUANTITY_ERROR_FALLBACK);
+      const message = userMessageFor(error, CART_QUANTITY_ERROR_FALLBACK);
       setLineErrors((previous) => ({ ...previous, [variables.id]: message }));
+      focusAfterResetRef.current = variables.id;
       setResetTokens((previous) => ({
         ...previous,
         [variables.id]: (previous[variables.id] ?? 0) + 1,
@@ -136,7 +142,7 @@ export function CartView() {
       announce(cartRemovedAnnouncement(variables.name));
     },
     onError: (error) => {
-      announce(cartErrorMessage(error, CART_REMOVE_ERROR_FALLBACK));
+      announce(userMessageFor(error, CART_REMOVE_ERROR_FALLBACK));
     },
   });
 
@@ -150,7 +156,26 @@ export function CartView() {
         delete next[item.id];
         return next;
       });
-      updateMutation.mutate({ id: item.id, quantity });
+      updateMutation.mutate({ id: item.id, quantity, intent: "change" });
+    },
+    [updateMutation, removeMutation.isPending],
+  );
+
+  /**
+   * Explicit re-confirm of an expired hold (TASK B4-2a, Step 1): re-sends the
+   * line's CURRENT quantity, which changeQuantity would swallow as a no-op.
+   * CartService::updateQuantity renews hold_expires_at on every PATCH
+   * (Step 0a), so this flips the line back to active; only queryKeys.cart is
+   * invalidated (the one key this page and the header badge share).
+   */
+  const reserveAgain = useCallback(
+    (item: CartItem) => {
+      if (updateMutation.isPending || removeMutation.isPending) return;
+      updateMutation.mutate({
+        id: item.id,
+        quantity: item.quantity,
+        intent: "reserve",
+      });
     },
     [updateMutation, removeMutation.isPending],
   );
@@ -192,7 +217,7 @@ export function CartView() {
             />
             <Link
               to="/shop"
-              className="inline-flex min-h-[44px] items-center justify-center rounded-[var(--radius-sm)] bg-[var(--color-brand-accent)] px-4 py-2 text-sm font-medium text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[var(--color-brand-accent)]"
+              className={buttonStyles({ variant: "primary" })}
             >
               {CART_EMPTY_LINK_LABEL}
             </Link>
@@ -261,9 +286,19 @@ export function CartView() {
                         </Badge>
                       )}
                       {item.hold_status === "expired" && (
-                        <p className="text-xs text-[var(--color-status-warning)]">
-                          {CART_HOLD_EXPIRED_MESSAGE}
-                        </p>
+                        <>
+                          <p className="text-xs text-[var(--color-status-warning)]">
+                            {CART_HOLD_EXPIRED_MESSAGE}
+                          </p>
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            disabled={updatePending || removePending}
+                            onClick={() => reserveAgain(item)}
+                          >
+                            {CART_RESERVE_LABEL}
+                          </Button>
+                        </>
                       )}
 
                       {lineErrors[item.id] && (
@@ -291,15 +326,15 @@ export function CartView() {
                           : ""}
                       </span>
 
-                      <button
+                      <Button
                         type="button"
+                        variant="secondary"
                         aria-label={cartRemoveLabel(name)}
                         disabled={updatePending || removePending}
                         onClick={() => removeItem(item, name)}
-                        className="inline-flex min-h-[44px] items-center justify-center rounded-[var(--radius-sm)] px-3 py-2 text-sm font-medium text-[var(--color-status-error)] hover:bg-[var(--color-surface-muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-accent)] disabled:opacity-50"
                       >
                         Remove
-                      </button>
+                      </Button>
                     </div>
                   </li>
                 );
@@ -326,7 +361,7 @@ export function CartView() {
               </p>
               <Link
                 to="/checkout"
-                className="inline-flex min-h-[44px] items-center justify-center rounded-[var(--radius-sm)] bg-[var(--color-brand-accent)] px-4 py-2 text-sm font-medium text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[var(--color-brand-accent)]"
+                className={buttonStyles({ variant: "primary" })}
               >
                 {CART_CHECKOUT_LABEL}
               </Link>

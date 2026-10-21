@@ -7,6 +7,7 @@ import {
   useAuthStore,
   useRedirectAndResume,
 } from "@ecommerce/api-client";
+import { getApiErrorStatus, userMessageFor } from "../lib/api-error";
 import { queryKeys } from "./query-keys";
 
 export const ADD_TO_CART_SUCCESS_MESSAGE = "Added to cart.";
@@ -19,22 +20,6 @@ export type AddToCartStatus =
   | "pending"
   | "success"
   | "error";
-
-function apiErrorDetail(error: unknown): { status: number; message: string } {
-  if (typeof error === "object" && error !== null) {
-    const err = error as {
-      response?: { status?: unknown; data?: { message?: unknown } };
-    };
-    const status =
-      typeof err.response?.status === "number" ? err.response.status : 0;
-    const message =
-      typeof err.response?.data?.message === "string"
-        ? err.response.data.message
-        : "";
-    return { status, message };
-  }
-  return { status: 0, message: "" };
-}
 
 /**
  * Add-to-cart, connected to the session layer (TASK B4-1a).
@@ -82,10 +67,7 @@ export function useAddToCart() {
       setMessage(ADD_TO_CART_SUCCESS_MESSAGE);
     },
     onError: (error) => {
-      const { status: httpStatus, message: serverMessage } =
-        apiErrorDetail(error);
-
-      if (httpStatus === 401) {
+      if (getApiErrorStatus(error) === 401) {
         const last = lastRequestRef.current;
         if (last) deferToTheLogin(last.productId, last.quantity);
         setStatus("guest");
@@ -94,11 +76,7 @@ export function useAddToCart() {
       }
 
       setStatus("error");
-      setMessage(
-        (httpStatus === 409 || httpStatus === 422) && serverMessage
-          ? serverMessage
-          : ADD_TO_CART_GENERIC_ERROR_MESSAGE
-      );
+      setMessage(userMessageFor(error, ADD_TO_CART_GENERIC_ERROR_MESSAGE));
     },
   });
 

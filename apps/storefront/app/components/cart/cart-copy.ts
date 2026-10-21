@@ -16,3 +16,14 @@ export function cartRemoveLabel(name: string): string {
 export function cartRemovedAnnouncement(name: string): string {
   return `Removed ${name} from cart`;
 }
+
+/**
+ * Label of the explicit action that re-confirms an expired hold by re-sending
+ * the line's CURRENT quantity (TASK B4-2a, Step 1). Lives here so the expired
+ * message and the button can never drift apart — CartView composes the message
+ * from this constant.
+ */
+export const CART_RESERVE_LABEL = "Reserve again";
+
+/** Polite announcement after a hold was reserved again. */
+export const CART_RESERVED_ANNOUNCEMENT = "Reserved again.";

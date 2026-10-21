@@ -4,6 +4,7 @@ import { afterAll, afterEach, beforeAll } from "vitest";
 import { server } from "./server";
 import {
   callCounts,
+  cartPatchBodies,
   productDetailRequests,
   productRequests,
   reviewShowcaseRequests,
@@ -21,6 +22,14 @@ import {
   testProducts,
   testShippingFee,
 } from "./handlers";
+import {
+  resetLastPlaceOrderBody,
+  setAddressesSource,
+  setOrdersSource,
+  setPlaceOrderError,
+  testAddresses,
+} from "./handlers-checkout";
+import { recordedRequests } from "./server";
 
 configure({ asyncUtilTimeout: 3000 });
 
@@ -50,6 +59,15 @@ afterEach(() => {
   servicesListRequests.length = 0;
   serviceDetailRequests.length = 0;
   setShippingFeeSource(testShippingFee);
+  // The order/address fixtures are per-test too: a placed order empties the
+  // cart source and appends to the order pool, so both must reset or the next
+  // test inherits another test's mutations.
+  setAddressesSource(testAddresses);
+  setOrdersSource([]);
+  setPlaceOrderError(null);
+  resetLastPlaceOrderBody();
+  cartPatchBodies.length = 0;
+  recordedRequests.length = 0;
 });
 
 afterAll(() => {
