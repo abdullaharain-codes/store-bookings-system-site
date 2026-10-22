@@ -69,6 +69,7 @@ export default [
       route("wishlist", "routes/wishlist.tsx"),
       route("account", "routes/account.tsx", [
         index("routes/account._index.tsx"),
+        route("orders/:id", "routes/account.orders.$id.tsx"),
       ]),
     ]),
     route("booking", "routes/booking.tsx", [

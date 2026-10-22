@@ -143,22 +143,25 @@ Server-state cache (products/categories/brands/banners/bookings) with sensible T
   /ui                        → shared design-system components (Button, Card, Carousel, etc.)
   /api-client                → typed API client shared by both apps
 /server
-  /src
-    /modules
-      /catalog
-      /taxonomy               → categories, brands
-      /merchandising           → homepage banners
-      /orders
-      /services
-      /scheduling
-      /reviews
-      /review-showcase
-      /settings
-      /users
-      /notifications
-    /middleware               → auth, error-handler, validation
-    /shared                    → asset/upload service, audit logger
-  /migrations
+  /app
+    /Modules                  → one PascalCase directory per domain module
+      /Catalog
+      /Taxonomy               → categories, brands
+      /Merchandising           → homepage banners
+      /Orders
+      /Services
+      /Scheduling
+      /Reviews
+      /ReviewShowcase
+      /Settings
+      /Users
+      /Notifications
+    /Models                    → Eloquent models
+    /Http                      → controllers, middleware, requests
+    /Shared, /Support          → asset/upload service, audit logger, helpers
+    /Console, /Providers
+  /database
+    /migrations
 /infra                        → deployment/config (Phase 11)
 ```
 

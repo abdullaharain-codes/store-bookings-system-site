@@ -12,6 +12,18 @@ export const queryKeys = {
   /** Per-user surfaces. Removed on logout. */
   cart: ["cart"] as const,
   wishlist: ["wishlist"] as const,
+  /** The user's saved delivery addresses (checkout + account). */
+  addresses: ["addresses"] as const,
+  /** The user's orders list (account area). */
+  orders: ["orders"] as const,
+  /** One order by id (the /account/orders/:id detail page). */
+  order: (orderId: number) => ["orders", orderId] as const,
+  /**
+   * The public flat shipping fee (checkout summary). Read live with
+   * staleTime 0 so an admin fee change is reflected on the next checkout open
+   * rather than served from a stale cache.
+   */
+  shippingFee: ["shipping-fee"] as const,
   /** Home merchandising rows (design.md §3.7/§3.9). Two different filter sets,
    *  so two keys: sharing one would let New Arrivals and Featured Products read
    *  each other's cache entry. */

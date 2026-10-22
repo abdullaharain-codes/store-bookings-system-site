@@ -1,4 +1,4 @@
-import { http, HttpResponse } from "msw";
+import { http, HttpResponse, delay } from "msw";
 import type {
   Address,
   Order,
@@ -14,6 +14,7 @@ import {
   getProductDetailPool,
   getShippingFeeSource,
   session,
+  testUser,
 } from "./handlers";
 
 /**
@@ -46,7 +47,7 @@ export const ORDERS_URL = `${API_URL}/orders`;
 export const testAddresses: Address[] = [
   {
     id: 1,
-    user_id: 7,
+    user_id: testUser.id,
     label: "Home",
     recipient_name: "Ali Khan",
     phone: "03001234567",
@@ -60,7 +61,7 @@ export const testAddresses: Address[] = [
   },
   {
     id: 2,
-    user_id: 7,
+    user_id: testUser.id,
     label: "Office",
     recipient_name: "Ali Khan",
     phone: "03007654321",
@@ -99,6 +100,22 @@ export let lastPlaceOrderBody: { address_id: number } | null = null;
 
 export function resetLastPlaceOrderBody(): void {
   lastPlaceOrderBody = null;
+}
+
+/**
+ * Optional artificial delay (ms) applied to POST /orders, so a test can keep the
+ * first request in flight while a second click is dispatched — the only window
+ * in which a double-submit guard can be observed. 0 by default; reset between
+ * tests by setup.ts.
+ */
+let placeOrderDelayMs = 0;
+
+export function setPlaceOrderDelay(ms: number): void {
+  placeOrderDelayMs = ms;
+}
+
+export function resetPlaceOrderDelay(): void {
+  placeOrderDelayMs = 0;
 }
 
 /**
@@ -195,7 +212,7 @@ export const checkoutHandlers = [
     addressSequence += 1;
     const address: Address = {
       id: addressSequence,
-      user_id: 7,
+      user_id: testUser.id,
       label: typeof body.label === "string" ? body.label : null,
       recipient_name: String(body.recipient_name),
       phone: String(body.phone),
@@ -267,6 +284,8 @@ export const checkoutHandlers = [
     callCounts.orderPlace += 1;
     if (!sessionGuardActive()) return unauthenticated();
 
+    if (placeOrderDelayMs > 0) await delay(placeOrderDelayMs);
+
     const body = (await request.json()) as { address_id: number };
     lastPlaceOrderBody = body;
 
@@ -305,7 +324,7 @@ export const checkoutHandlers = [
     const order: Order = {
       id: orderSequence,
       order_number: `ORD-${new Date().getFullYear()}-${orderNumberSuffix(orderSequence)}`,
-      user_id: 7,
+      user_id: testUser.id,
       address_id: address.id,
       recipient_name: address.recipient_name,
       phone: address.phone,

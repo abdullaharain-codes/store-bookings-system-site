@@ -134,6 +134,14 @@ describe("storefront route config", () => {
     expect(isGuarded("/account")).toBe(true);
   });
 
+  it("guards the order detail child and keeps it in the account tree", () => {
+    const orderDetail = entryFor("/account/orders/:id");
+
+    expect(orderDetail.file).toBe("routes/account.orders.$id.tsx");
+    expect(isGuarded("/account/orders/:id")).toBe(true);
+    expect(isInSiteShell("/account/orders/:id")).toBe(true);
+  });
+
   it("declares require-auth as a pathless layout", () => {
     const guard = findEntry(GUARD_FILE);
 

@@ -24,6 +24,7 @@ import {
 } from "./handlers";
 import {
   resetLastPlaceOrderBody,
+  resetPlaceOrderDelay,
   setAddressesSource,
   setOrdersSource,
   setPlaceOrderError,
@@ -66,6 +67,7 @@ afterEach(() => {
   setOrdersSource([]);
   setPlaceOrderError(null);
   resetLastPlaceOrderBody();
+  resetPlaceOrderDelay();
   cartPatchBodies.length = 0;
   recordedRequests.length = 0;
 });

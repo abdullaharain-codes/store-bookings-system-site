@@ -10,7 +10,7 @@
 - No abbreviations that aren't domain-standard (`qty` acceptable, `svc` for "service" is not — this project has an actual `Service` domain entity, ambiguity is unacceptable here specifically).
 
 ## 2. Folder Structure Rules
-- Follow the structure in `architecture.md` §13. New modules go under `/server/src/modules/{module-name}`, never loose files at the root.
+- Follow the structure in `architecture.md` §13. New modules go under `server/app/Modules/{Module}` (PascalCase, one directory per domain module — Laravel's `app/` layout, not a `src/modules` tree), never loose files at the root.
 - Shared/reusable UI components live only in `/packages/ui` — never duplicated inside `/apps/storefront` or `/apps/admin`.
 - One module = one domain concept. Do not add "misc" or "utils" catch-all modules for business logic (generic technical utilities are fine; business rules are not).
 

@@ -1,23 +1,11 @@
-import { siteConfig } from "../config/site";
-import { PageContainer } from "../components/common/PageContainer";
-import { PageHeading } from "../components/common/PageHeading";
-
-/** The one visible h1 on the placeholder checkout page. */
-export const CHECKOUT_TITLE = "Checkout";
+import { CheckoutView } from "../components/checkout/CheckoutView";
 
 /**
- * /checkout — a thin, loader-free placeholder behind the require-auth guard so
- * the cart's "Proceed to checkout" link is never dead (TASK B4-1c, deliberate
- * scope limit). Like /cart it is per-user and CSR-only, so it is not
- * prerendered; the real checkout flow lands in a later task.
+ * /checkout (TASK B4-2a). One line into the real checkout view: like /cart it
+ * is per-user and CSR-only (excluded from prerender), and the view owns its
+ * queries, title and single h1, so the route stays a thin wrapper behind the
+ * require-auth guard.
  */
 export default function CheckoutRoute() {
-  return (
-    <>
-      <title>{`${CHECKOUT_TITLE} | ${siteConfig.name}`}</title>
-      <PageContainer>
-        <PageHeading>{CHECKOUT_TITLE}</PageHeading>
-      </PageContainer>
-    </>
-  );
+  return <CheckoutView />;
 }

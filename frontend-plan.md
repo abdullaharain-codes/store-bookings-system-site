@@ -123,9 +123,9 @@ Candidates evaluated against this project's **exact** versions: Vite **8.2.0**, 
 **Framework Mode migration cost (flagged honestly):** RR Framework Mode is a different app shell vs. the current declarative `<BrowserRouter><Routes>` (needs `routes.ts`, `root.tsx`, `@react-router/dev`, `entry.client.tsx`). Mitigate by adopting Framework Mode during Step 3 route scaffolding in **storefront only** (admin stays plain CSR). If the migration proves disruptive mid-build, the documented fallback is `vite-plugin-react-ssg` (keeps existing Vite SPA shape, executes route `loader`s at build).
 
 **Prerender set (public storefront routes ONLY; build-time static HTML, no runtime server):**
-- `/`, `/shop`, `/our-it-services`, `/our-brands`
-- Dynamic via `getStaticPaths()` from the live API at build: `/shop/category/:slug`, `/shop/brand/:slug`, `/product/:slug`, `/service/:slug`
-- **Always pure CSR, never prerendered:** `/account/*`, `/cart`, `/checkout`, `/login`, `/register`, booking wizard (auth-gated; no SEO value; avoids baking session data).
+- Currently prerendered (must match `apps/storefront/react-router.config.ts`): `/`, `/shop`, `/services`, `/login`, `/register`, plus the single `__spa-fallback.html`.
+- Dynamic via `getStaticPaths()` from the live API at build (planned, not yet wired): `/shop/category/:slug`, `/shop/brand/:slug`, `/product/:slug`, `/service/:slug`.
+- **Always pure CSR, never prerendered:** `/account/*`, `/cart`, `/checkout`, `/wishlist`, booking wizard (auth-gated; no SEO value; avoids baking session data).
 
 **Staleness guard (important — honors architecture.md §6):** prerendered slug pages carry build-time loader data. Post-deploy data freshness is preserved with React Router's **`clientLoader` revalidation** (`HydrateFallback` pattern; concrete mechanism verified in spike gotcha (c) above): the static HTML ships the SEO-relevant shell/content, then the client re-fetches categories/brands/banners/products via TanStack Query so publishing a banner/category/brand still appears immediately post-hydration (no redeploy). New dynamically-created products/categories appear for crawlers on the next build/deploy — accepted and documented.
 

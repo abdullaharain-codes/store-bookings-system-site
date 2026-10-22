@@ -19,8 +19,8 @@ Dev ports: storefront 5173, admin 5174, API http://localhost:8000/api/v1 (VITE_A
 Storefront prerender set = `/`, `/shop`, `/services`, `/login`, `/register` + `__spa-fallback.html` ONLY
 (/cart /checkout /wishlist /account/* never prerendered; dynamic slug routes join later).
 
-## 2. Commands (all verified working 2026-10-20, Windows PowerShell, Docker up)
-- Frontend tests: `npx vitest run` in apps/storefront (32 files/324), packages/api-client (17/231), packages/ui (29/240).
+## 2. Commands (all verified working 2026-10-21, Windows PowerShell, Docker up)
+- Frontend tests: `npx vitest run` in apps/storefront (38 files/386), packages/api-client (17/231), packages/ui (30/241).
 - Typecheck: delete `apps/storefront/node_modules/.tmp/*.tsbuildinfo` then `npm --workspace storefront-app exec -- tsc -b` (exit 0).
 - Builds: `npm --workspace storefront-app run build`; `npm --workspace admin-app run build`;
   then `node scripts/check-built-css.mjs <built css>` on `apps/storefront/build/client/assets/root-*.css`
@@ -48,6 +48,15 @@ Storefront prerender set = `/`, `/shop`, `/services`, `/login`, `/register` + `_
   NEVER use --no-file-parallelism, retries, or skipped tests to get green. Any failure reported with file + test + message.
 - Mutation proofs only where the prompt marks [MUTATE] (one-shot, revert, report the failure message).
 - No commits unless the owner says so (rules.md §11 wants feature branches; owner currently defers commits).
+- SAFETY (absolute, no exceptions): NEVER run `git checkout`, `git restore`, `git reset`, `git clean`, `git stash` or
+  `git revert`. Uncommitted work is the owner's; never discard it. Fix forward only — if a change was wrong, edit it
+  back by hand. `git status` / `git diff` (read-only) are fine.
+- Owner workflow on record: the owner commits after each green milestone on branch `wip/frontend-stage-b`; the agent
+  never commits, and a task ends with the worktree intentionally dirty.
+- Environment: Windows PowerShell 5.1 only — no `&&`, `head`/`tail`/`wc`/`grep`/heredocs. Use `;`, `Select-Object`,
+  `Select-String`, `Measure-Object`. Run vitest ONLY from inside `apps/storefront` (or the package dir). Send long
+  output to `$env:TEMP\*.txt` then filter it. No Python/Node rewrite scripts for bulk edits — small targeted edits only,
+  with `npm --workspace storefront-app exec -- tsc -b` after each batch.
 - Final output: findings first, concise, with counts; list deliberate omissions and surprises.
 
 ## 5. Storefront code conventions (learned the hard way)
@@ -94,9 +103,22 @@ Validation errors = 422 with `errors` bag; stock/domain rejections = top-level `
 - OrderService float arithmetic on money (fix Phase 12). CartView hand-rolled button classes (B4-2a cleanup).
 - No cart hold countdown (deliberate V1 omission). Badge success variant contrast fail (Phase 12 #16).
 - Admin app: scaffold + stub login only; no role guard (Stage C). Hosting + PHP version (Phase 13).
-- Storefront flake observed once 2026-10-20: register.test.tsx failed in full-parallel run, message truncated,
-  not reproducible in isolation or re-run (324/324 green twice). Same never-reproduced class as T1/T2 in phases.md.
+- Storefront flakes: register.test.tsx failed once 2026-10-20 full-parallel, not reproducible (324/324 green twice).
+  B4-2a hit a REPRODUCIBLE full-parallel-only flake: new checkout tests clicked Placed-Order before the address
+  selected (disabled click no-op) and a delayed POST cleared the shared cart mid-next-test. Fixed by waiting for
+  enabled + letting the delayed request settle — do not reintroduce tight clicks.
+
+## 11. Detail-route conventions (B4-2a)
+- `/checkout` + `/account/orders/:id` are thin route wrappers (read `:id` param -> pass as prop). Views own queries,
+  title, one h1. Both are CSR-only, behind require-auth, excluded from prerender.
+- Double-submit guard = synchronous `useRef` (React Query `isPending` flips next render). Money shown from the
+  server's own strings via `app/lib/money.ts` + `formatPrice`; never recomputed client-side.
+- `DetailNotFound` (app/components/common/DetailNotFound.tsx) is the shared 404 with `<meta robots=noindex>` +
+  breadcrumb + back action; used by ProductDetail/ServiceDetail/OrderDetailView. 404 handling via `app/lib/is-not-found.ts`.
+- Checkout is COD-only and ALWAYS requires an explicit confirm click (never auto-replayed, per §8 / architecture §5.2).
+- New MSW order/address handlers live in `app/test/handlers-checkout.ts` (never grow `app/test/handlers.ts`).
 
 ## 10. NEXT TASK
-**B4-2a — checkout slice** (cart -> checkout page -> place order -> order detail; shipping fee from D2 endpoint).
-The engineering control chat will paste the full task prompt. DO NOT START IT until that prompt arrives.
+**B4-2b — order history + cancellation** (list `/account/orders`, wire POST `/orders/{id}/cancel`; the order DETAIL
+page `/account/orders/:id` shipped in B4-2a). The engineering control chat will paste the full task prompt.
+DO NOT START IT until that prompt arrives.
