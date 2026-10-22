@@ -26,6 +26,8 @@ const IMAGE_BASE = `${SERVER_ORIGIN}/storage/uploads/products`;
 type DetailProps = {
   onAddToCart?: (productId: number, quantity: number) => void;
   onWishlistToggle?: (productId: number) => void;
+  onBuyNow?: (productId: number, quantity: number) => void;
+  isWishlisted?: boolean;
   statusMessage?: string | null;
 };
 
@@ -373,5 +375,57 @@ describe("ProductDetail", () => {
 
     const group = screen.getByRole("group", { name: "Purchase options" });
     expect(within(group).getByRole("status")).toBeEmptyDOMElement();
+  });
+
+  it("labels the wishlist button from isWishlisted and calls the toggle", async () => {
+    const onWishlistToggle = vi.fn();
+    const user = userEvent.setup();
+
+    const first = renderDetail("dell-xps-15", {
+      onWishlistToggle,
+      isWishlisted: false,
+    });
+    await findHeading("Dell XPS 15");
+    const add = screen.getByRole("button", { name: "Add to wishlist" });
+    await user.click(add);
+    expect(onWishlistToggle).toHaveBeenCalledWith(11);
+    first.unmount();
+
+    renderDetail("dell-xps-15", {
+      onWishlistToggle,
+      isWishlisted: true,
+    });
+    await findHeading("Dell XPS 15");
+    expect(
+      screen.getByRole("button", { name: "Remove from wishlist" })
+    ).toBeInTheDocument();
+  });
+
+  it("renders a Buy now action that hands the chosen quantity to onBuyNow", async () => {
+    const onBuyNow = vi.fn();
+    const user = userEvent.setup();
+    renderDetail("dell-xps-15", { onAddToCart: vi.fn(), onBuyNow });
+    await findHeading("Dell XPS 15");
+
+    const quantity = screen.getByLabelText("Quantity");
+    fireEvent.change(quantity, { target: { value: "3" } });
+    fireEvent.blur(quantity);
+
+    await user.click(screen.getByRole("button", { name: "Buy now" }));
+    expect(onBuyNow).toHaveBeenCalledWith(11, 3);
+  });
+
+  it("disables Buy now when no handler is wired or the product is out of stock", async () => {
+    const first = renderDetail("dell-xps-15", { onAddToCart: vi.fn() });
+    await findHeading("Dell XPS 15");
+    expect(screen.getByRole("button", { name: "Buy now" })).toBeDisabled();
+    first.unmount();
+
+    renderDetail("dell-latitude-5440", {
+      onAddToCart: vi.fn(),
+      onBuyNow: vi.fn(),
+    });
+    await findHeading("Dell Latitude 5440");
+    expect(screen.getByRole("button", { name: "Buy now" })).toBeDisabled();
   });
 });

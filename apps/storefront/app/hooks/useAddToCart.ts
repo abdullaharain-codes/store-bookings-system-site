@@ -1,9 +1,10 @@
 import { useCallback, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useLocation } from "react-router";
+import { useLocation, useNavigate } from "react-router";
 import {
   addCartItem,
   buildAddCartItemRequest,
+  isSafeInternalPath,
   useAuthStore,
   useRedirectAndResume,
 } from "@ecommerce/api-client";
@@ -37,6 +38,7 @@ export type AddToCartStatus =
  */
 export function useAddToCart() {
   const { requireAuth } = useRedirectAndResume();
+  const navigate = useNavigate();
   const location = useLocation();
   const queryClient = useQueryClient();
   const isSessionChecked = useAuthStore((state) => state.isSessionChecked);
@@ -44,18 +46,23 @@ export function useAddToCart() {
   const [status, setStatus] = useState<AddToCartStatus>("idle");
   const [message, setMessage] = useState<string | null>(null);
   // The request the mutation last tried, so a 401 can re-defer it verbatim.
-  const lastRequestRef = useRef<{ productId: number; quantity: number } | null>(
-    null
-  );
+  const lastRequestRef = useRef<{
+    productId: number;
+    quantity: number;
+    targetRoute: string;
+  } | null>(null);
+  // Buy Now: the internal path to land on after the add succeeds. Only a
+  // same-origin relative path is honoured (validated in addToCart).
+  const redirectAfterRef = useRef<string | null>(null);
 
   const deferToTheLogin = useCallback(
-    (productId: number, quantity: number) => {
+    (productId: number, quantity: number, targetRoute: string) => {
       requireAuth({
         ...buildAddCartItemRequest(productId, quantity),
-        targetRoute: location.pathname + location.search,
+        targetRoute,
       });
     },
-    [location.pathname, location.search, requireAuth]
+    [requireAuth]
   );
 
   const mutation = useMutation({
@@ -65,11 +72,25 @@ export function useAddToCart() {
       await queryClient.invalidateQueries({ queryKey: queryKeys.cart });
       setStatus("success");
       setMessage(ADD_TO_CART_SUCCESS_MESSAGE);
+
+      // Buy Now: after the line is added, move the shopper to checkout. No
+      // order is ever submitted here — checkout still needs its explicit click.
+      const redirectAfter = redirectAfterRef.current;
+      redirectAfterRef.current = null;
+      if (redirectAfter) navigate(redirectAfter);
     },
     onError: (error) => {
+      redirectAfterRef.current = null;
       if (getApiErrorStatus(error) === 401) {
         const last = lastRequestRef.current;
-        if (last) deferToTheLogin(last.productId, last.quantity);
+        if (last) {
+          // A Buy Now deferral re-targets checkout; a plain add returns here.
+          deferToTheLogin(
+            last.productId,
+            last.quantity,
+            last.targetRoute
+          );
+        }
         setStatus("guest");
         setMessage(null);
         return;
@@ -81,7 +102,11 @@ export function useAddToCart() {
   });
 
   const addToCart = useCallback(
-    (productId: number, quantity: number = 1) => {
+    (
+      productId: number,
+      quantity: number = 1,
+      redirectAfter?: string
+    ) => {
       if (!Number.isInteger(quantity) || quantity < 1 || mutation.isPending) {
         if (!Number.isInteger(quantity) || quantity < 1) {
           setStatus("error");
@@ -90,12 +115,24 @@ export function useAddToCart() {
         return;
       }
 
-      lastRequestRef.current = { productId, quantity };
+      // Only a safe internal path is honoured; anything else is dropped so a
+      // crafted value cannot become an open redirect.
+      const safeRedirect =
+        redirectAfter && isSafeInternalPath(redirectAfter)
+          ? redirectAfter
+          : null;
+      redirectAfterRef.current = safeRedirect;
+
+      const targetRoute =
+        safeRedirect ?? location.pathname + location.search;
+      lastRequestRef.current = { productId, quantity, targetRoute };
 
       if (isSessionChecked && !isAuthenticated) {
         setStatus("guest");
         setMessage(null);
-        deferToTheLogin(productId, quantity);
+        // Guest Buy Now lands on /checkout after the replay; a plain add
+        // returns to the page it was clicked from.
+        deferToTheLogin(productId, quantity, targetRoute);
         return;
       }
 
@@ -103,7 +140,14 @@ export function useAddToCart() {
       setMessage(null);
       mutation.mutate({ productId, quantity });
     },
-    [mutation, isSessionChecked, isAuthenticated, deferToTheLogin]
+    [
+      mutation,
+      isSessionChecked,
+      isAuthenticated,
+      deferToTheLogin,
+      location.pathname,
+      location.search,
+    ]
   );
 
   return {

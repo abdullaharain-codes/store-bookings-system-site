@@ -2,7 +2,7 @@ import { useAuthStore } from "@ecommerce/api-client";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   ADDRESSES_URL,
   ORDERS_URL,
@@ -12,6 +12,7 @@ import {
 } from "../../test/handlers-checkout";
 import {
   callCounts,
+  getCartItemsSource,
   session,
   setCartItemsSource,
   setShippingFeeSource,
@@ -158,9 +159,13 @@ describe("CheckoutView", () => {
     });
     const user = userEvent.setup();
 
+    // The cart is present before placing, then genuinely emptied afterwards.
+    expect(getCartItemsSource().length).toBeGreaterThan(0);
+
     await clickPlaceOrder(user);
 
     await waitFor(() => expect(probe.path).toBe("/account/orders/1?placed=1"));
+    await waitFor(() => expect(getCartItemsSource()).toEqual([]));
   });
 
   it("announces the placement and invalidates the cart", async () => {
@@ -169,20 +174,26 @@ describe("CheckoutView", () => {
       withAnnouncer: true,
     });
     const user = userEvent.setup();
-    const invalidate = queryClient.invalidateQueries;
+
+    // Real evidence, not a tautology: spy on invalidateQueries and require an
+    // actual call carrying the ["cart"] key. (The old assertion only checked
+    // that getQueryState(["cart"]) was not `undefined`, which is true even if
+    // invalidation never happens — a vacuous test.)
+    const invalidatedKeys: unknown[] = [];
+    const spy = vi
+      .spyOn(queryClient, "invalidateQueries")
+      .mockImplementation((filters) => {
+        invalidatedKeys.push(filters?.queryKey);
+        return Promise.resolve();
+      });
 
     await clickPlaceOrder(user);
 
     await waitFor(() =>
       expect(screen.getByRole("status")).toHaveTextContent("Order placed")
     );
-    // The cart cache was dropped, so the header badge reloads empty.
-    await waitFor(() =>
-      expect(queryClient.getQueryState(["cart"])?.isInvalidated).not.toBe(
-        undefined
-      )
-    );
-    void invalidate;
+    expect(invalidatedKeys).toContainEqual(["cart"]);
+    spy.mockRestore();
   });
 
   it("sends exactly ONE request on a double click", async () => {

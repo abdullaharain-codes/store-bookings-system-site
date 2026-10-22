@@ -41,7 +41,6 @@ export const ORDER_DETAIL_SUBTOTAL_LABEL = "Subtotal";
 export const ORDER_DETAIL_SHIPPING_LABEL = "Shipping";
 export const ORDER_DETAIL_TOTAL_LABEL = "Total";
 export const ORDER_DETAIL_COD_LABEL = "Cash on delivery";
-export const ORDER_DETAIL_QUANTITY_LABEL = "Qty";
 
 /** Accessible name for an item's line (needs the product name). */
 export function orderItemLabel(name: string): string {

@@ -39,6 +39,17 @@ export const CHECKOUT_ADDRESS_LEGEND = "Delivery address";
 export const CHECKOUT_ADD_ADDRESS_LABEL = "Add a new address";
 export const CHECKOUT_SAVE_ADDRESS_LABEL = "Save address";
 export const CHECKOUT_CANCEL_ADDRESS_LABEL = "Cancel";
+export const CHECKOUT_ADDRESS_LOADING_LABEL = "Loading addresses";
+export const CHECKOUT_ADDRESS_LOAD_ERROR =
+  "We couldn't load your addresses.";
+export const CHECKOUT_ADDRESS_LOAD_RETRY = "Try again";
+
+/**
+ * Shown for a cart line whose nested product the server did not eager-load.
+ * The summary must never render an empty cell, and the name must not be
+ * invented client-side.
+ */
+export const CHECKOUT_PRODUCT_FALLBACK_NAME = "Product";
 
 /** Field labels mirror the server's real field names. */
 export const CHECKOUT_FIELD_LABELS = {

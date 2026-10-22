@@ -66,6 +66,33 @@ function InvalidQuantityHarness({ productId = 11 }: { productId?: number }) {
   );
 }
 
+/** A Buy Now harness: adds then navigates to the redirectAfter path. */
+function BuyNowHarness({
+  productId = 11,
+  quantity = 2,
+  redirectAfter = "/checkout",
+}: {
+  productId?: number;
+  quantity?: number;
+  redirectAfter?: string | null;
+}) {
+  const { addToCart, isPending, message } = useAddToCart();
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() =>
+          addToCart(productId, quantity, redirectAfter ?? undefined)
+        }
+      >
+        Buy {productId} x {quantity}
+      </button>
+      <span data-testid="pending">{String(isPending)}</span>
+      {message && <p role="status">{message}</p>}
+    </div>
+  );
+}
+
 function resetStores() {
   useAuthStore.setState({
     user: null,
@@ -302,5 +329,93 @@ describe("useAddToCart", () => {
     expect(status).toHaveAttribute("role", "status");
     expect(status).toHaveTextContent(ADD_TO_CART_SUCCESS_MESSAGE);
     expect(callCounts.cartItems).toBe(1);
+  });
+
+  it("Buy Now (authenticated): adds once then navigates to the redirect path, with NO order request", async () => {
+    session.start();
+    useAuthStore.setState({
+      user: testUser,
+      isAuthenticated: true,
+      isSessionChecked: true,
+    });
+    const user = userEvent.setup();
+    const { probe } = renderWithProviders(
+      <BuyNowHarness productId={11} quantity={2} redirectAfter="/checkout" />,
+      { entry: "/product/dell-xps-15" }
+    );
+
+    await user.click(screen.getByRole("button", { name: "Buy 11 x 2" }));
+
+    await waitFor(() => expect(probe.path).toBe("/checkout"));
+    expect(callCounts.cartItems).toBe(1);
+    expect(callCounts.orderPlace).toBe(0);
+  });
+
+  it("Buy Now (authenticated): a 422 stock error stays on the page and shows the server message", async () => {
+    session.start();
+    useAuthStore.setState({
+      user: testUser,
+      isAuthenticated: true,
+      isSessionChecked: true,
+    });
+    server.use(
+      http.post(CART_ITEMS_URL, () =>
+        HttpResponse.json({ message: "Only 3 left in stock." }, { status: 422 })
+      )
+    );
+    const user = userEvent.setup();
+    const { probe } = renderWithProviders(
+      <BuyNowHarness productId={11} quantity={10} redirectAfter="/checkout" />,
+      { entry: "/product/dell-xps-15" }
+    );
+
+    await user.click(screen.getByRole("button", { name: "Buy 11 x 10" }));
+
+    const status = await screen.findByRole("status");
+    expect(status).toHaveTextContent("Only 3 left in stock.");
+    expect(probe.path).toBe("/product/dell-xps-15");
+  });
+
+  it("Buy Now (guest): defers with targetRoute /checkout and the exact add-to-cart body, no request", async () => {
+    useAuthStore.setState({ isSessionChecked: true });
+    const user = userEvent.setup();
+    const { probe } = renderWithProviders(
+      <BuyNowHarness productId={11} quantity={2} redirectAfter="/checkout" />,
+      { entry: "/product/dell-xps-15" }
+    );
+
+    await user.click(screen.getByRole("button", { name: "Buy 11 x 2" }));
+
+    await waitFor(() => expect(probe.path).toBe("/login"));
+    expect(callCounts.cartItems).toBe(0);
+    const pending = usePendingActionStore.getState().pendingAction;
+    expect(pending).toEqual({
+      ...buildAddCartItemRequest(11, 2),
+      targetRoute: "/checkout",
+      timestamp: expect.any(Number),
+    });
+  });
+
+  it("Buy Now: an unsafe redirectAfter is ignored (no navigation)", async () => {
+    session.start();
+    useAuthStore.setState({
+      user: testUser,
+      isAuthenticated: true,
+      isSessionChecked: true,
+    });
+    const user = userEvent.setup();
+    const { probe } = renderWithProviders(
+      <BuyNowHarness
+        productId={11}
+        quantity={2}
+        redirectAfter="https://evil.test"
+      />,
+      { entry: "/product/dell-xps-15" }
+    );
+
+    await user.click(screen.getByRole("button", { name: "Buy 11 x 2" }));
+
+    await waitFor(() => expect(callCounts.cartItems).toBe(1));
+    expect(probe.path).toBe("/product/dell-xps-15");
   });
 });

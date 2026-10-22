@@ -47,6 +47,9 @@ Storefront prerender set = `/`, `/shop`, `/services`, `/login`, `/register` + `_
   Backend VERIFY = scoped new/changed tests + existing tests of touched code + Pint.
   NEVER use --no-file-parallelism, retries, or skipped tests to get green. Any failure reported with file + test + message.
 - Mutation proofs only where the prompt marks [MUTATE] (one-shot, revert, report the failure message).
+- No rewrite one-liners on SOURCE files (`-replace | Set-Content`, Python/Node rewrite scripts) — use the edit tool
+  for small targeted edits. Tests that assert an ABSENCE/emptiness must first assert the thing was PRESENT (e.g. the
+  badge showed "Cart, 1 item" before it is gone), so the test cannot pass vacuously.
 - No commits unless the owner says so (rules.md §11 wants feature branches; owner currently defers commits).
 - SAFETY (absolute, no exceptions): NEVER run `git checkout`, `git restore`, `git reset`, `git clean`, `git stash` or
   `git revert`. Uncommitted work is the owner's; never discard it. Fix forward only — if a change was wrong, edit it
@@ -108,7 +111,7 @@ Validation errors = 422 with `errors` bag; stock/domain rejections = top-level `
   selected (disabled click no-op) and a delayed POST cleared the shared cart mid-next-test. Fixed by waiting for
   enabled + letting the delayed request settle — do not reintroduce tight clicks.
 
-## 11. Detail-route conventions (B4-2a)
+## 10. Detail-route conventions (B4-2a)
 - `/checkout` + `/account/orders/:id` are thin route wrappers (read `:id` param -> pass as prop). Views own queries,
   title, one h1. Both are CSR-only, behind require-auth, excluded from prerender.
 - Double-submit guard = synchronous `useRef` (React Query `isPending` flips next render). Money shown from the
@@ -118,7 +121,6 @@ Validation errors = 422 with `errors` bag; stock/domain rejections = top-level `
 - Checkout is COD-only and ALWAYS requires an explicit confirm click (never auto-replayed, per §8 / architecture §5.2).
 - New MSW order/address handlers live in `app/test/handlers-checkout.ts` (never grow `app/test/handlers.ts`).
 
-## 10. NEXT TASK
-**B4-2b — order history + cancellation** (list `/account/orders`, wire POST `/orders/{id}/cancel`; the order DETAIL
-page `/account/orders/:id` shipped in B4-2a). The engineering control chat will paste the full task prompt.
-DO NOT START IT until that prompt arrives.
+## 11. NEXT TASK
+**B4-3 — Account area** (orders list, cancel, profile, saved addresses management). The engineering control chat will
+paste the full task prompt. DO NOT START IT until that prompt arrives.

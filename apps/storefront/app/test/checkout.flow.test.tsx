@@ -150,6 +150,11 @@ describe("checkout flow", () => {
     });
     await waitFor(() => expect(placeOrder).toBeEnabled());
 
+    // BEFORE: the header badge reflects the one cart line (real, present proof).
+    expect(
+      await screen.findByRole("link", { name: "Cart, 1 item" })
+    ).toBeInTheDocument();
+
     await user.click(placeOrder);
 
     // Landed on the order detail page with ?placed=1, showing the order number.

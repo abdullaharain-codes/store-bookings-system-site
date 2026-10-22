@@ -64,15 +64,20 @@ export function OrderDetailView({ orderId }: { orderId: number }) {
   const isSessionChecked = useAuthStore((state) => state.isSessionChecked);
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
 
+  // A non-numeric / non-positive :id can never be a real order, so treat it as
+  // not-found IMMEDIATELY — no request, no endless skeleton.
+  const validId = Number.isInteger(orderId) && orderId > 0;
+
   const orderQuery = useQuery({
     queryKey: queryKeys.order(orderId),
     queryFn: () => getOrder(orderId),
-    enabled: isSessionChecked && isAuthenticated && Number.isFinite(orderId),
+    enabled: isSessionChecked && isAuthenticated && validId,
     retry: false,
   });
 
   const order = orderQuery.data?.order;
-  const notFound = orderQuery.isError && isNotFoundError(orderQuery.error);
+  const notFound =
+    !validId || (orderQuery.isError && isNotFoundError(orderQuery.error));
   const showPlaced = searchParams.get("placed") === "1";
   const placedDate = formatPlacedDate(order?.created_at);
 

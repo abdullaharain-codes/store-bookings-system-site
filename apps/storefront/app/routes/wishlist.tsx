@@ -1,14 +1,11 @@
-/**
- * Placeholder wishlist route (CSR — per-user surface, excluded from prerender).
- * Wishlist wiring arrives in a later task.
- */
-export function meta() {
-  return [
-    { title: "Wishlist — TechFix" },
-    { name: "description", content: "Products you've saved for later." },
-  ];
-}
+import { WishlistView } from "../components/wishlist/WishlistView";
 
-export default function Wishlist() {
-  return <h1>Wishlist</h1>;
+/**
+ * /wishlist — one line into the wishlist page (TASK B4-2b). No loader here: the
+ * wishlist is per-user and CSR-only (excluded from prerender), and the view
+ * owns its query and title, so the route stays a thin wrapper behind the
+ * require-auth guard.
+ */
+export default function WishlistRoute() {
+  return <WishlistView />;
 }

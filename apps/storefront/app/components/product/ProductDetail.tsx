@@ -25,6 +25,12 @@ import { isNotFoundError } from "../../lib/is-not-found";
 import { DetailNotFound } from "../common/DetailNotFound";
 import { PageContainer } from "../common/PageContainer";
 import { PageHeading } from "../common/PageHeading";
+import {
+  PRODUCT_ADD_TO_CART_LABEL,
+  PRODUCT_ADD_WISHLIST_LABEL,
+  PRODUCT_BUY_NOW_LABEL,
+  PRODUCT_REMOVE_WISHLIST_LABEL,
+} from "./product-copy";
 
 /**
  * /product/:slug (TASK B3-2). Data-driven and loader-free like the rest of the
@@ -38,7 +44,15 @@ import { PageHeading } from "../common/PageHeading";
 interface ProductDetailProps {
   slug: string;
   onAddToCart?: (productId: number, quantity: number) => void;
+  onBuyNow?: (productId: number, quantity: number) => void;
   onWishlistToggle?: (productId: number) => void;
+  isWishlisted?: boolean;
+  /**
+   * The signed-in user's wishlist ids. Used when the explicit `isWishlisted`
+   * boolean is not supplied: the view owns the product fetch, so only IT knows
+   * the loaded product's id (the route only has the slug).
+   */
+  wishlistProductIds?: Set<number>;
   statusMessage?: string | null;
 }
 
@@ -99,7 +113,10 @@ function buildCategoryChain(
 export function ProductDetail({
   slug,
   onAddToCart,
+  onBuyNow,
   onWishlistToggle,
+  isWishlisted,
+  wishlistProductIds,
   statusMessage,
 }: ProductDetailProps) {
   const navigate = useNavigate();
@@ -168,7 +185,11 @@ export function ProductDetail({
               categoriesQuery.isSuccess ? categoriesQuery.data.categories : null
             }
             onAddToCart={onAddToCart}
+            onBuyNow={onBuyNow}
             onWishlistToggle={onWishlistToggle}
+            isWishlisted={
+              isWishlisted ?? (wishlistProductIds?.has(product.id) ?? false)
+            }
             statusMessage={statusMessage}
           />
         )}
@@ -181,13 +202,17 @@ function ProductDetailContent({
   product,
   categories,
   onAddToCart,
+  onBuyNow,
   onWishlistToggle,
+  isWishlisted,
   statusMessage,
 }: {
   product: Product;
   categories: Category[] | null;
   onAddToCart?: (productId: number, quantity: number) => void;
+  onBuyNow?: (productId: number, quantity: number) => void;
   onWishlistToggle?: (productId: number) => void;
+  isWishlisted?: boolean;
   statusMessage?: string | null;
 }) {
   const navigate = useNavigate();
@@ -269,15 +294,26 @@ function ProductDetailContent({
                 disabled={outOfStock || !onAddToCart}
                 onClick={() => onAddToCart?.(product.id, quantity)}
               >
-                Add to Cart
+                {PRODUCT_ADD_TO_CART_LABEL}
+              </Button>
+              <Button
+                type="button"
+                variant="primary"
+                disabled={outOfStock || !onBuyNow}
+                onClick={() => onBuyNow?.(product.id, quantity)}
+              >
+                {PRODUCT_BUY_NOW_LABEL}
               </Button>
               <Button
                 type="button"
                 variant="secondary"
                 disabled={!onWishlistToggle}
+                aria-pressed={isWishlisted ?? false}
                 onClick={() => onWishlistToggle?.(product.id)}
               >
-                Add to wishlist
+                {isWishlisted
+                  ? PRODUCT_REMOVE_WISHLIST_LABEL
+                  : PRODUCT_ADD_WISHLIST_LABEL}
               </Button>
             </div>
 

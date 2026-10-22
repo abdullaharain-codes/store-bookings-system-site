@@ -1,6 +1,7 @@
 import { setupServer } from "msw/node";
 import { handlers } from "./handlers";
 import { checkoutHandlers } from "./handlers-checkout";
+import { wishlistHandlers } from "./handlers-wishlist";
 
 /**
  * Node-side MSW server for jsdom tests. Started from app/test/setup.ts and
@@ -12,7 +13,11 @@ import { checkoutHandlers } from "./handlers-checkout";
  * other way round), so registering both here keeps the 1185-line shared file
  * free of order/address fixtures while still serving the real wire contract.
  */
-export const server = setupServer(...handlers, ...checkoutHandlers);
+export const server = setupServer(
+  ...handlers,
+  ...checkoutHandlers,
+  ...wishlistHandlers
+);
 
 /**
  * Every request the server saw, as "METHOD /path" in call order. A test uses

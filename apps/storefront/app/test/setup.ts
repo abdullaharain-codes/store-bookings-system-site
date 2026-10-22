@@ -30,6 +30,7 @@ import {
   setPlaceOrderError,
   testAddresses,
 } from "./handlers-checkout";
+import { setWishlistError, setWishlistSource } from "./handlers-wishlist";
 import { recordedRequests } from "./server";
 
 configure({ asyncUtilTimeout: 3000 });
@@ -68,6 +69,10 @@ afterEach(() => {
   setPlaceOrderError(null);
   resetLastPlaceOrderBody();
   resetPlaceOrderDelay();
+  // The wishlist is per-test: a toggle mutates the pool, so the next test must
+  // start from an empty wishlist and no forced error.
+  setWishlistSource([]);
+  setWishlistError(null);
   cartPatchBodies.length = 0;
   recordedRequests.length = 0;
 });

@@ -30,6 +30,9 @@ import {
   CHECKOUT_ADD_ADDRESS_LABEL,
   CHECKOUT_ADDRESS_ERROR_FALLBACK,
   CHECKOUT_ADDRESS_LEGEND,
+  CHECKOUT_ADDRESS_LOADING_LABEL,
+  CHECKOUT_ADDRESS_LOAD_ERROR,
+  CHECKOUT_ADDRESS_LOAD_RETRY,
   CHECKOUT_COD_LABEL,
   CHECKOUT_COD_NOTE,
   CHECKOUT_EMPTY_DESCRIPTION,
@@ -45,6 +48,7 @@ import {
   CHECKOUT_PLACED_ANNOUNCEMENT,
   CHECKOUT_PLACE_ERROR_FALLBACK,
   CHECKOUT_PLACE_ORDER_LABEL,
+  CHECKOUT_PRODUCT_FALLBACK_NAME,
   CHECKOUT_RETRY_LABEL,
   CHECKOUT_SHIPPING_LABEL,
   CHECKOUT_SHIPPING_UNKNOWN,
@@ -274,7 +278,7 @@ export function CheckoutView() {
                     className="flex items-start justify-between gap-[var(--space-3)] text-sm"
                   >
                     <span className="text-[var(--color-text-primary)]">
-                      {item.product?.name ?? "Product"}
+                      {item.product?.name ?? CHECKOUT_PRODUCT_FALLBACK_NAME}
                       <span className="text-[var(--color-text-secondary)]">
                         {` × ${item.quantity}`}
                       </span>
@@ -351,7 +355,7 @@ export function CheckoutView() {
                   <ul className="list-disc ps-4 text-xs text-[var(--color-text-secondary)]">
                     {expiredItems.map((item) => (
                       <li key={item.id}>
-                        {item.product?.name ?? "Product"}
+                        {item.product?.name ?? CHECKOUT_PRODUCT_FALLBACK_NAME}
                       </li>
                     ))}
                   </ul>
@@ -451,18 +455,22 @@ function AddressSection({
         </legend>
 
         {isLoading ? (
-          <LoadingSkeleton label="Loading addresses" />
+          <LoadingSkeleton label={CHECKOUT_ADDRESS_LOADING_LABEL} />
         ) : hasError ? (
-          <p className="text-sm text-[var(--color-status-error)]">
-            We couldn't load your addresses.{" "}
-            <button
+          <div className="flex flex-col gap-[var(--space-2)]">
+            <p className="text-sm text-[var(--color-status-error)]">
+              {CHECKOUT_ADDRESS_LOAD_ERROR}
+            </p>
+            <Button
               type="button"
+              variant="secondary"
+              size="sm"
+              className="self-start"
               onClick={onRetry}
-              className="font-medium underline"
             >
-              Try again
-            </button>
-          </p>
+              {CHECKOUT_ADDRESS_LOAD_RETRY}
+            </Button>
+          </div>
         ) : (
           addresses.map((address) => (
             <label

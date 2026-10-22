@@ -699,6 +699,8 @@ export const callCounts = {
   orders: 0,
   orderShow: 0,
   orderPlace: 0,
+  wishlist: 0,
+  wishlistToggle: 0,
   reset() {
     this.login = 0;
     this.register = 0;
@@ -718,6 +720,8 @@ export const callCounts = {
     this.orders = 0;
     this.orderShow = 0;
     this.orderPlace = 0;
+    this.wishlist = 0;
+    this.wishlistToggle = 0;
   },
 };
 

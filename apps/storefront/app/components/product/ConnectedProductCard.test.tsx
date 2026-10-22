@@ -37,11 +37,14 @@ describe("ConnectedProductCard", () => {
     );
 
     expect(screen.getAllByRole("button", { name: "Add to Cart" })).toHaveLength(2);
+    // B4-2b: the heart is now wired (guest -> /login), so it is ENABLED. The
+    // pre-B4-2b assertion that every heart was disabled is intentionally
+    // changed here.
     expect(
       screen
         .getAllByRole("button", { name: "Add to wishlist" })
         .every((b) => (b as HTMLButtonElement).disabled)
-    ).toBe(true);
+    ).toBe(false);
   });
 
   it("authenticated: clicking Add to Cart posts product + quantity and announces politely", async () => {
@@ -115,5 +118,45 @@ describe("ConnectedProductCard", () => {
       "href",
       "/product/dell-xps-15"
     );
+  });
+
+  it("authenticated: the heart toggles the wishlist and announces the addition", async () => {
+    session.start();
+    useAuthStore.setState({
+      user: testUser,
+      isAuthenticated: true,
+      isSessionChecked: true,
+    });
+    const user = userEvent.setup();
+    renderWithProviders(
+      <ConnectedProductCard product={inStock} href="/product/dell-xps-15" />,
+      { entry: "/shop", withAnnouncer: true }
+    );
+
+    await user.click(screen.getByRole("button", { name: "Add to wishlist" }));
+
+    await waitFor(() =>
+      expect(screen.getByRole("status")).toHaveTextContent("Added to wishlist.")
+    );
+    expect(callCounts.wishlistToggle).toBe(1);
+    // The heart now reflects the wishlisted state.
+    expect(
+      screen.getByRole("button", { name: "Remove from wishlist" })
+    ).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("guest: the heart goes to /login with NO wishlist request", async () => {
+    useAuthStore.setState({ isSessionChecked: true });
+    session.start();
+    const user = userEvent.setup();
+    const { probe } = renderWithProviders(
+      <ConnectedProductCard product={inStock} href="/product/dell-xps-15" />,
+      { entry: "/shop?search=dell" }
+    );
+
+    await user.click(screen.getByRole("button", { name: "Add to wishlist" }));
+
+    await waitFor(() => expect(probe.path).toBe("/login"));
+    expect(callCounts.wishlistToggle).toBe(0);
   });
 });

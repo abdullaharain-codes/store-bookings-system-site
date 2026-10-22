@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ORDERS_URL, setOrdersSource } from "../../test/handlers-checkout";
 import { session } from "../../test/handlers";
 import type { Order } from "@ecommerce/api-client";
-import { server } from "../../test/server";
+import { server, recordedRequests } from "../../test/server";
 import { renderWithProviders } from "../../test/utils";
 import { OrderDetailView } from "./OrderDetailView";
 
@@ -202,4 +202,30 @@ describe("OrderDetailView", () => {
     expect(screen.getByRole("status")).toBeInTheDocument();
     expect(h1Count()).toBe(1);
   });
+
+  it.each([
+    ["NaN", Number("abc")],
+    ["zero", 0],
+    ["negative", -1],
+  ])(
+    "renders the not-found state immediately for a %s id, with NO request",
+    async (_label, id) => {
+      renderWithProviders(<OrderDetailView orderId={id} />, {
+        entry: "/account/orders/0",
+      });
+
+      expect(
+        await screen.findByRole("heading", {
+          level: 1,
+          name: "Order not found",
+        })
+      ).toBeInTheDocument();
+      expect(h1Count()).toBe(1);
+      // No endless skeleton and no network attempt for a bogus id.
+      expect(screen.queryByRole("status")).toBeNull();
+      expect(
+        recordedRequests.some((r) => r.startsWith("GET /api/v1/orders/"))
+      ).toBe(false);
+    }
+  );
 });
