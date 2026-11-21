@@ -1,0 +1,41 @@
+name: ecommerce-dev-serve
+
+volumes:
+  vendor:
+    external: true
+    name: ecommerce-dev_vendor
+
+services:
+  api-serve:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ecommerce-dev-api:php8.5-gd
+    working_dir: /app
+    ports:
+      - "8000:8000"
+    volumes:
+      - ../../server:/app
+      - vendor:/app/vendor
+    environment:
+      APP_ENV: local
+      APP_DEBUG: "true"
+      COMPOSER_MEMORY_LIMIT: "-1"
+    command: >
+      sh -lc "set -e;
+      echo '=== php -v ===';
+      php -v;
+      echo '=== gd ===';
+      php -m | grep -i gd || true;
+      if [ ! -f vendor/autoload.php ]; then echo 'ERROR: vendor/autoload.php missing in external volume ecommerce-dev_vendor'; exit 1; fi;
+      if [ ! -f .env ]; then cp .env.example .env; fi;
+      if ! grep -q '^APP_KEY=base64' .env || grep -q '^APP_KEY=$' .env; then php artisan key:generate --force; fi;
+      sed -i 's/^SESSION_DRIVER=.*/SESSION_DRIVER=database/' .env;
+      grep -q '^SANCTUM_STATEFUL_DOMAINS=' .env || echo 'SANCTUM_STATEFUL_DOMAINS=localhost:5173,127.0.0.1:5173,localhost:5174,127.0.0.1:5174,localhost,127.0.0.1' >> .env;
+      sed -i 's/^SANCTUM_STATEFUL_DOMAINS=.*/SANCTUM_STATEFUL_DOMAINS=localhost:5173,127.0.0.1:5173,localhost:5174,127.0.0.1:5174,localhost,127.0.0.1/' .env;
+      grep -q '^SESSION_DOMAIN=' .env || echo 'SESSION_DOMAIN=localhost' >> .env;
+      sed -i 's/^SESSION_DOMAIN=.*/SESSION_DOMAIN=localhost/' .env;
+      sed -i 's/^DB_CONNECTION=.*/DB_CONNECTION=sqlite/' .env;
+      mkdir -p database && touch database/database.sqlite;
+      php artisan migrate --force;
+      php artisan serve --host=0.0.0.0 --port=8000"

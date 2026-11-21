@@ -38,3 +38,6 @@ Thumbs.db
 
 design-reference/
 spike-ssg-poc/
+
+# Local AI tool state (OpenCode / Claude)
+.claude/

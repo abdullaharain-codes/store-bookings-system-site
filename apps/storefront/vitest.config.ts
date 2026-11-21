@@ -17,7 +17,12 @@ export default defineConfig({
     setupFiles: ["./app/test/setup.ts"],
     include: ["app/**/*.test.{ts,tsx}"],
     testTimeout: 10000,
-    // maxWorkers was 2 (TASK T1, 2026-09-30) and is now removed (TASK T2,
+    // SUITE-2 (2026-11-20): isolated 18/18 clean, default full suite 7-8
+    // failures, 4/8 workers had zero failures, tests 3-5x slower under
+    // default load. This SUPERSEDES the earlier removal below, made when the
+    // suite had 143 tests.
+    maxWorkers: 4,
+    // maxWorkers was 2 (TASK T1, 2026-09-30) and was removed (TASK T2,
     // 2026-10-01). Measured with no maxWorkers key on this machine:
     //   20 consecutive `npx vitest run` — 20/20 exit 0 with 143/143 passed,
     //   Duration mean 11.03s, max 12.03s, min 10.74s.
