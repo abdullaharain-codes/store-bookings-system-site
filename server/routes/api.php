@@ -30,6 +30,7 @@ use App\Http\Controllers\Api\V1\ShippingFeeController;
 use App\Http\Controllers\Api\V1\WishlistController;
 use App\Models\BusinessSetting;
 use Illuminate\Support\Facades\Route;
+use Laravel\Sanctum\Http\Middleware\AuthenticateSession;
 
 Route::prefix('v1')->group(function () {
 
@@ -112,7 +113,7 @@ Route::prefix('v1')->group(function () {
     // auth:sanctum: session-cookie SPA auth, no admin role gate.
     // The ownership check lives inside CartService/WishlistService, not in
     // middleware — this follows architecture.md §5 (row-level, not route-level).
-    Route::middleware(['auth:sanctum'])->group(function () {
+    Route::middleware(['auth:sanctum', AuthenticateSession::class])->group(function () {
         Route::get('/cart', [CartController::class, 'index']);
         Route::post('/cart/items', [CartController::class, 'store']);
         Route::patch('/cart/items/{cartItem}', [CartController::class, 'update']);
@@ -186,7 +187,7 @@ Route::prefix('v1')->group(function () {
     // Single middleware group guards the whole /admin surface so no admin
     // endpoint can be left unguarded (rules.md §5).
     Route::prefix('admin')
-        ->middleware(['auth:sanctum', 'admin'])
+        ->middleware(['auth:sanctum', 'admin', AuthenticateSession::class])
         ->group(function () {
             Route::apiResource('categories', AdminCategoryController::class)
                 ->except(['create', 'edit']);
