@@ -214,13 +214,14 @@ Scaffold + Login only. `apps/admin` is a plain client SPA with a placeholder das
 11. **SlotGenerationService::nearestAvailableSlot() N+1** — the nearest-slot suggestion issues queries per candidate day; collapse to a bounded query set.
 12. **HomepageBanner/ReviewShowcase reorder() partial-ID-list stale display_order** — reordering with a partial ID list leaves unlisted rows at stale display_order values; reconcile ordering for partial lists.
 13. **Production MySQL transaction_isolation should be confirmed REPEATABLE READ** — the booking-slot concurrency guarantees assume REPEATABLE READ; verify Hostinger MySQL's default before go-live.
-14. **No cross-device session invalidation after password change** — a password change does not invalidate sessions/tokens on other devices; add invalidation for Phase 12.
+14. **No cross-device session invalidation after password change** - a password change does not invalidate sessions/tokens on other devices; add invalidation for Phase 12. **RESOLVED (PW-PROOF/-2/-3, 2026-11-20):** proven on the running API with two cookie jars and mutations; see the PW-PROOF-3 entry. Residual window: item 21.
 15. **AdminAssetController uses inline `$request->validate()` instead of a dedicated FormRequest** — unlike every other admin controller in this codebase, a deliberate scope-limited deviation from the Task upload-endpoint; align it with the FormRequest pattern for consistency.
 16. **Badge `success` variant fails WCAG AA** - `--color-status-success: #16A34A` as text on a 10%-tint background (effectively near-white) is roughly 3.3:1 at 12px, below the 4.5:1 body-text threshold. Darken the token or switch the variant to a darker text colour; do not ship it as-is (`design.md` §2.2).
 17. **`allowScripts` is set in the wrong `package.json`** - it currently lives in `apps/storefront/package.json`, and npm ignores it there (it must be at the workspace **root**), so the esbuild postinstall approval is silently a no-op. Move the field to the root `package.json`.
 18. **`usePostAuthNavigation` snapshots pending state at render time** - it reads `hasPendingAction` through a `useCallback` dependency, so a pending action written *after* the hook mounts is invisible to the closure. Read the pending action at call time via `usePendingActionStore.getState()` instead.
 19. **Admin app has no role guard or route protection** - `apps/admin` renders its dashboard at `/` unconditionally and only calls `fetchUser()` on mount; every admin screen is reachable client-side by a non-admin user until the API rejects the call. Add a client-side role guard / route protection as a UX measure in Stage C (server-side enforcement is already correct and remains the real boundary, per `PRD.md` §5.5).
 20. **Production cookie/CORS/mail settings not yet applied** - `SESSION_DOMAIN`, `SESSION_SECURE_COOKIE`, `SANCTUM_STATEFUL_DOMAINS`, the CORS `allowed_origins` list, and `MAIL_MAILER` (currently `log`) must all be set per the `SRS.md` §6.2.1 checklist before go-live. A wrong cookie domain or an unset `MAIL_MAILER` fails silently rather than loudly.
+21. **A session that never made an authenticated request is not invalidated by another device's password change** - Sanctum stores the password hash in the session only after an authenticated request, so a session that logged in but made none before the change survives its first request after it (PW-PROOF-3 scenario nohash). The storefront calls GET /auth/user on bootstrap, so the window is small. Mitigation (test first): store the hash at login.
 
 ---
 
@@ -854,3 +855,33 @@ Authorization was **not** re-tested: `AdminProductApiTest` already covers 401 (g
 - RED selftest: TOTAL 17 PASS 8 FAIL 9, EXIT=1. GREEN selftest: TOTAL 17 PASS 17 FAIL 0, EXIT=0. verify-frontend.ps1 -SelfTest: TOTAL 17 PASS 17 FAIL 0, EXIT=0.
 - Full run (one background job, no -Fast): all 9 steps PASS, banner ALL STEPS PASS, SCRIPT_EXIT=0. Fast run (-Fast, same job): tsc/storefront/api-client/ui/lint PASS, 4 SKIPPED (storefront-build, admin-build, prerender, check-built-css), banner ALL RUN STEPS PASS (4 skipped: storefront-build, admin-build, prerender, check-built-css), SCRIPT_EXIT=0.
 - Correction: CLEANUP-1a reported the failure output as working; it was not until CLEANUP-1c.
+
+## PW-PROOF-3 - cross-device sign-out explained and proven (2026-11-20)
+
+- PW-PROOF-2 results (observed): baseline PASS; M-C (route-group AuthenticateSession removed AND config sanctum.middleware.authenticate_session set to null) FAIL S6a,S6b; M-D (route-group only removed, config kept) PASS; M-E (config authenticate_session set to null, route-group kept) FAIL S6a,S6b (earlier prediction was wrong: expected S6a only).
+- Mechanism (Sanctum AuthenticateSession, container `/app/vendor/laravel/sanctum/src/Http/Middleware/AuthenticateSession.php`, quoted from STEP 0c):
+  - `42:        $shouldLogout = $guards->filter(`
+  - `43:            fn ($guard, $driver) => $request->session()->has('password_hash_'.$driver)`
+  - `44:        )->filter(`
+  - `45:            fn ($guard, $driver) => ! $this->validatePasswordHash(`
+  - `46:                $guard,`
+  - `47:                $request->user()->getAuthPassword(),`
+  - `48:                $request->session()->get('password_hash_'.$driver)`
+  - `49:            )`
+  - `50:        );`
+  - `60:        return tap($next($request), function () use ($request, $guards) {`
+  - `61:            if (! is_null($guard = $this->getFirstGuardWithUser($guards->keys()))) {`
+  - `62:                $this->storePasswordHashInSession($request, $guard);`
+  - `63:            }`
+  - `64:        });`
+  - `94:        $request->session()->put([`
+  - `95:            "password_hash_{$guard}" => method_exists($guardInstance, 'hashPasswordForCookie')`
+  - `96:                ? $guardInstance->hashPasswordForCookie($guardInstance->user()->getAuthPassword())`
+  - `97:                : $guardInstance->user()->getAuthPassword(),`
+  - `98:        ]);`
+  - Condition: comparison/logout only applies when the session already has `password_hash_{driver}` (line 43). If no hash is stored, the guard is excluded and the request passes; the hash is stored after the authenticated request completes (tap, lines 60-64, storePasswordHashInSession lines 94-98).
+- P3 (standard, no mutation, 72s wait): PASS. All S1a-S7d MATCH, EXIT=0.
+- P1 (Scenario nohash, no mutation, 72s wait): PASS. Script printed "SCENARIO nohash: expected values encode the hypothesis". S2c/S3b skipped (jar B made no authenticated call before password change). S6a GET /api/v1/auth/user status=200 expected=200 MATCH; S6b GET /api/v1/orders status=200 expected=200 MATCH. EXIT=0. Prediction held.
+- P2 (M-E mutation: config sanctum.middleware.authenticate_session set to null, route-group kept; script -WarmOrders, 72s wait): FAIL S6a only, as predicted. S3c GET /api/v1/orders status=200 expected=200 MATCH (warmed jar B hash via route-group AuthenticateSession). S6a GET /api/v1/auth/user status=200 expected=401 MISMATCH; S6b GET /api/v1/orders status=401 expected=401 MATCH. RESULT FAIL S6a, EXIT=1. Prediction held.
+- Restore (P2): config/sanctum.php restored by Edit; host+container SHA256 equal to original AE67075700BA244E104950F5FF75A3F53692C09AF94AFD69A90DFFF9C8816869; routes/api.php unchanged, host+container SHA256 equal to original 053CCAF813950FC1DECFE1596D05ED139F0B2F82B89818DB3BD249D9D311C48A. STEP 5 final standard run after restore: PASS, EXIT=0.
+- M1 (removing logoutOtherDevices) changed nothing; the mechanism is Sanctum AuthenticateSession in the stateful frontend stack (config sanctum.middleware.authenticate_session); the route-group copy and logoutOtherDevices are redundant here and stay as defense in depth.

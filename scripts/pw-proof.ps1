@@ -1,4 +1,14 @@
+param(
+    [ValidateSet('standard','nohash')]
+    [string]$Scenario = 'standard',
+    [switch]$WarmOrders
+)
+
 $ErrorActionPreference = 'Stop'
+
+if ($Scenario -eq 'nohash') {
+    Write-Output 'SCENARIO nohash: expected values encode the hypothesis'
+}
 
 $base = 'http://localhost:8000'
 $ts = Get-Date -Format 'yyyyMMddHHmmss'
@@ -87,11 +97,18 @@ Call 'S1d' $jarA 'GET' ($base + '/api/v1/auth/user') 200 '' | Out-Null
 # S2 jar B
 Call 'S2a' $jarB 'GET' ($base + '/sanctum/csrf-cookie') 204 '' | Out-Null
 Call 'S2b' $jarB 'POST' ($base + '/api/v1/auth/login') 200 $loginBody | Out-Null
-Call 'S2c' $jarB 'GET' ($base + '/api/v1/auth/user') 200 '' | Out-Null
+if ($Scenario -ne 'nohash') {
+    Call 'S2c' $jarB 'GET' ($base + '/api/v1/auth/user') 200 '' | Out-Null
+}
 
 # S3 both valid before change
 Call 'S3a' $jarA 'GET' ($base + '/api/v1/auth/user') 200 '' | Out-Null
-Call 'S3b' $jarB 'GET' ($base + '/api/v1/auth/user') 200 '' | Out-Null
+if ($Scenario -ne 'nohash') {
+    Call 'S3b' $jarB 'GET' ($base + '/api/v1/auth/user') 200 '' | Out-Null
+}
+if ($WarmOrders) {
+    Call 'S3c' $jarB 'GET' ($base + '/api/v1/orders') 200 '' | Out-Null
+}
 
 # S4 change password on jar A
 Call 'S4a' $jarA 'POST' ($base + '/api/v1/profile/password') 200 $changeBody | Out-Null
@@ -100,8 +117,10 @@ Call 'S4a' $jarA 'POST' ($base + '/api/v1/profile/password') 200 $changeBody | O
 Call 'S5a' $jarA 'GET' ($base + '/api/v1/auth/user') 200 '' | Out-Null
 
 # S6 jar B signed out
-Call 'S6a' $jarB 'GET' ($base + '/api/v1/auth/user') 401 '' | Out-Null
-Call 'S6b' $jarB 'GET' ($base + '/api/v1/orders') 401 '' | Out-Null
+$s6aExpected = if ($Scenario -eq 'nohash') { 200 } else { 401 }
+$s6bExpected = if ($Scenario -eq 'nohash') { 200 } else { 401 }
+Call 'S6a' $jarB 'GET' ($base + '/api/v1/auth/user') $s6aExpected '' | Out-Null
+Call 'S6b' $jarB 'GET' ($base + '/api/v1/orders') $s6bExpected '' | Out-Null
 
 # S7 new/old password
 Call 'S7a' $jarC 'GET' ($base + '/sanctum/csrf-cookie') 204 '' | Out-Null
