@@ -44,6 +44,28 @@ function WishlistHarness({ productId = 11 }: { productId?: number }) {
   );
 }
 
+/**
+ * A harness exposing TWO toggle buttons driven by ONE useToggleWishlist
+ * instance, so a test can prove the hook keeps each in-flight product's
+ * response scoped to that product (not to whichever mutation fired last).
+ */
+function TwoProductToggleHarness() {
+  const toggle = useToggleWishlist();
+
+  return (
+    <div>
+      <span data-testid="pending11">{String(toggle.isPending(11))}</span>
+      <span data-testid="pending12">{String(toggle.isPending(12))}</span>
+      <button type="button" onClick={() => toggle.toggle(11)}>
+        Toggle 11
+      </button>
+      <button type="button" onClick={() => toggle.toggle(12)}>
+        Toggle 12
+      </button>
+    </div>
+  );
+}
+
 function resetStores() {
   useAuthStore.setState({
     user: null,
@@ -297,5 +319,67 @@ describe("useToggleWishlist", () => {
     signedIn();
     renderWithProviders(<WishlistHarness productId={11} />, { entry: "/shop" });
     expect(screen.getByTestId("togglePending")).toHaveTextContent("false");
+  });
+
+  it("two products through one hook instance: each request hits its own URL and each response is scoped to its own product", async () => {
+    signedIn();
+    let release11!: () => void;
+    let release12!: () => void;
+    const gate11 = new Promise<void>((resolve) => {
+      release11 = resolve;
+    });
+    const gate12 = new Promise<void>((resolve) => {
+      release12 = resolve;
+    });
+
+    // Per-product handlers: prove each toggle reaches its OWN url, and let the
+    // test choose the resolution order so the two responses interleave.
+    server.use(
+      http.post(`${WISHLIST_URL}/11`, async () => {
+        callCounts.wishlistToggle += 1;
+        await gate11;
+        return HttpResponse.json({ is_wishlisted: false });
+      }),
+      http.post(`${WISHLIST_URL}/12`, async () => {
+        callCounts.wishlistToggle += 1;
+        await gate12;
+        return HttpResponse.json({ is_wishlisted: true });
+      })
+    );
+
+    const user = userEvent.setup();
+    renderWithProviders(<TwoProductToggleHarness />, {
+      entry: "/shop",
+      withAnnouncer: true,
+    });
+
+    await user.click(screen.getByRole("button", { name: "Toggle 11" }));
+    await waitFor(() =>
+      expect(screen.getByTestId("pending11")).toHaveTextContent("true")
+    );
+    await user.click(screen.getByRole("button", { name: "Toggle 12" }));
+    await waitFor(() =>
+      expect(screen.getByTestId("pending12")).toHaveTextContent("true")
+    );
+
+    // Each request hit the URL of the product it was toggling.
+    expect(recordedRequests).toContain("POST /api/v1/wishlist/11");
+    expect(recordedRequests).toContain("POST /api/v1/wishlist/12");
+    expect(callCounts.wishlistToggle).toBe(2);
+
+    // Resolve 12 FIRST (added), then 11 (removed). The final announcement must
+    // reflect 11's own reply, and 11's pending flag must clear.
+    release12();
+    release11();
+
+    await waitFor(() =>
+      expect(screen.getByTestId("pending11")).toHaveTextContent("false")
+    );
+    expect(screen.getByTestId("pending12")).toHaveTextContent("false");
+    await waitFor(() =>
+      expect(screen.getByRole("status")).toHaveTextContent(
+        WISHLIST_REMOVED_ANNOUNCEMENT
+      )
+    );
   });
 });

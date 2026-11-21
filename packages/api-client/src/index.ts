@@ -33,10 +33,15 @@ export {
 export {
   getAddresses,
   createAddress,
+  updateAddress,
+  deleteAddress,
+  setDefaultAddress,
   type Address,
   type CreateAddressData,
+  type UpdateAddressData,
   type AddressesResponse,
   type AddressResponse,
+  type AddressMessageResponse,
 } from "./address";
 export {
   placeOrder,

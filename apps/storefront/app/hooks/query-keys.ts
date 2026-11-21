@@ -16,6 +16,10 @@ export const queryKeys = {
   addresses: ["addresses"] as const,
   /** The user's orders list (account area). */
   orders: ["orders"] as const,
+  /** The user's profile. */
+  profile: ["profile"] as const,
+  /** The user's orders list for a specific page (kept under the same family for invalidations). */
+  ordersPage: (page: number) => ["orders", "list", page] as const,
   /** One order by id (the /account/orders/:id detail page). */
   order: (orderId: number) => ["orders", orderId] as const,
   /**

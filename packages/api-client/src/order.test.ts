@@ -86,4 +86,57 @@ describe("order", () => {
     expect(mockPost).toHaveBeenCalledWith("/orders/1/cancel");
     expect(result).toEqual({ order });
   });
+
+  it("listOrders(page) adds ?page only when page is a positive integer", async () => {
+    mockGet.mockResolvedValue({ data: { orders: ordersResponse } });
+
+    await listOrders(2);
+
+    expect(mockGet).toHaveBeenCalledWith("/orders", { params: { page: 2 } });
+  });
+
+  it("listOrders() sends no params when called without a page", async () => {
+    mockGet.mockResolvedValue({ data: { orders: ordersResponse } });
+
+    await listOrders();
+
+    expect(mockGet).toHaveBeenCalledWith("/orders");
+  });
+
+  it("listOrders(undefined) sends no params", async () => {
+    mockGet.mockResolvedValue({ data: { orders: ordersResponse } });
+
+    await listOrders(undefined);
+
+    expect(mockGet).toHaveBeenCalledWith("/orders");
+  });
+
+  it("listOrders throws when page is not a positive integer (caller name listOrders)", async () => {
+    await expect(listOrders(0)).rejects.toThrow(/listOrders:/);
+    await expect(listOrders(-1)).rejects.toThrow(/listOrders:/);
+    await expect(listOrders(1.5)).rejects.toThrow(/listOrders:/);
+    await expect(listOrders(Number.NaN)).rejects.toThrow(/listOrders:/);
+  });
+
+  it("listOrders returns the paginated orders envelope {orders: Paginator<Order>}", async () => {
+    mockGet.mockResolvedValue({ data: { orders: ordersResponse } });
+
+    const result = await listOrders(1);
+
+    expect(result).toEqual({ orders: ordersResponse });
+  });
+
+  it("cancelOrder propagates API errors", async () => {
+    const error = new Error("boom");
+    mockPost.mockRejectedValue(error);
+
+    await expect(cancelOrder(99)).rejects.toBe(error);
+  });
+
+  it("listOrders propagates API errors", async () => {
+    const error = new Error("boom");
+    mockGet.mockRejectedValue(error);
+
+    await expect(listOrders(1)).rejects.toBe(error);
+  });
 });

@@ -2,6 +2,7 @@ import { setupServer } from "msw/node";
 import { handlers } from "./handlers";
 import { checkoutHandlers } from "./handlers-checkout";
 import { wishlistHandlers } from "./handlers-wishlist";
+import { accountHandlers } from "./handlers-account";
 
 /**
  * Node-side MSW server for jsdom tests. Started from app/test/setup.ts and
@@ -16,7 +17,8 @@ import { wishlistHandlers } from "./handlers-wishlist";
 export const server = setupServer(
   ...handlers,
   ...checkoutHandlers,
-  ...wishlistHandlers
+  ...wishlistHandlers,
+  ...accountHandlers
 );
 
 /**

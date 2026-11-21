@@ -189,6 +189,33 @@ function snapshotItems(
   };
 }
 
+/**
+ * Optional artificial delay (ms) applied to POST /orders/:id/cancel.
+ * Reset between tests by setup.ts.
+ */
+let cancelOrderDelayMs = 0;
+
+export function setCancelOrderDelay(ms: number): void {
+  cancelOrderDelayMs = ms;
+}
+
+export function resetCancelOrderDelay(): void {
+  cancelOrderDelayMs = 0;
+}
+
+/**
+ * A forced failure for the NEXT POST /orders/:id/cancel: status + message,
+ * single use. `null` means the handler behaves normally. Cleared after every
+ * test.
+ */
+let cancelOrderError: { status: number; message: string } | null = null;
+
+export function setCancelOrderError(
+  error: { status: number; message: string } | null,
+): void {
+  cancelOrderError = error;
+}
+
 export const checkoutHandlers = [
   /** GET /addresses — the user's saved addresses as a plain array. */
   http.get(ADDRESSES_URL, () => {
@@ -242,16 +269,23 @@ export const checkoutHandlers = [
 
     const params = new URL(request.url).searchParams;
     const perPage = 15;
-    const currentPage = Math.max(1, Number(params.get("page") ?? 1) || 1);
+    // Laravel's paginator does NOT clamp an out-of-range page to last_page;
+    // for a page beyond the last page it returns data:[] while keeping
+    // current_page unchanged (so the client can redirect to last_page).
+    const currentPage = Number(params.get("page") ?? 1) || 1;
     const from = (currentPage - 1) * perPage;
-    const data = ordersSource.slice(from, from + perPage);
+    const data =
+      currentPage >= 1 && from < ordersSource.length
+        ? ordersSource.slice(from, from + perPage)
+        : [];
+    const lastPage = Math.max(1, Math.ceil(ordersSource.length / perPage));
     const paginator: OrdersResponse = {
       data,
       links: [],
       current_page: currentPage,
       first_page_url: null,
       from: data.length ? from + 1 : null,
-      last_page: Math.max(1, Math.ceil(ordersSource.length / perPage)),
+      last_page: lastPage,
       last_page_url: null,
       next_page_url: null,
       path: ORDERS_URL,
@@ -273,6 +307,57 @@ export const checkoutHandlers = [
     if (!order) return HttpResponse.json({ message: "Not Found" }, { status: 404 });
 
     return HttpResponse.json({ order });
+  }),
+
+  /**
+   * POST /orders/:id/cancel — customer cancels a pending order.
+   *
+   * Server semantics mirrored exactly:
+   * - pending -> 200 { order } with status 'cancelled'; stock is restored and
+   *   the order flips in the source (OrderService::cancelOrder).
+   * - delivered -> 422 top-level { message: 'Cannot cancel a delivered order. Please contact support.' }
+   * - cancelled  -> 422 top-level { message: 'This order has already been cancelled.' }
+   * - shipped/confirmed/any non-pending non-delivered/cancelled -> 422
+   *   { message: 'Only pending orders can be cancelled. Please contact support.' }
+   * - unknown/foreign -> 404 {"message":"Not Found"}
+   */
+  http.post(`${ORDERS_URL}/:id/cancel`, async ({ params }) => {
+    callCounts.orderCancel += 1;
+    if (!sessionGuardActive()) return unauthenticated();
+
+    if (cancelOrderDelayMs > 0) await delay(cancelOrderDelayMs);
+
+    if (cancelOrderError) {
+      const { status, message } = cancelOrderError;
+      cancelOrderError = null;
+      return HttpResponse.json({ message }, { status });
+    }
+
+    const id = Number(params.id);
+    const order = ordersSource.find((candidate) => candidate.id === id);
+    if (!order) return HttpResponse.json({ message: "Not Found" }, { status: 404 });
+
+    if (order.status === "pending") {
+      order.status = "cancelled";
+      order.updated_at = "2026-08-25T12:00:00.000000Z";
+      return HttpResponse.json({ order });
+    }
+    if (order.status === "delivered") {
+      return HttpResponse.json(
+        { message: "Cannot cancel a delivered order. Please contact support." },
+        { status: 422 },
+      );
+    }
+    if (order.status === "cancelled") {
+      return HttpResponse.json(
+        { message: "This order has already been cancelled." },
+        { status: 422 },
+      );
+    }
+    return HttpResponse.json(
+      { message: "Only pending orders can be cancelled. Please contact support." },
+      { status: 422 },
+    );
   }),
 
   /**

@@ -170,6 +170,7 @@ describe("redirect-and-resume flow", () => {
     const { probe } = startApp("/cart");
 
     await waitFor(() => expect(probe.path).toBe("/login"));
+    await waitFor(() => expect(screen.getByRole("heading", { name: /Sign in|Login/i })).toBeInTheDocument());
 
     await signInOnLoginPage();
 

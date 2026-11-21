@@ -1,0 +1,18 @@
+export const profileCopy = {
+  title: "My Profile",
+  nameLabel: "Name",
+  emailLabel: "Email",
+  emailReadOnlyNote: "Email cannot be changed.",
+  profileUpdated: "Profile updated",
+  save: "Save",
+  passwordSectionTitle: "Change password",
+  currentPasswordLabel: "Current password",
+  newPasswordLabel: "New password",
+  confirmPasswordLabel: "Confirm new password",
+  passwordHint: "changing your password signs you out on all other devices",
+  changePasswordButton: "Change password",
+  passwordChanged: "Password changed",
+  passwordWrongCurrent: "The current password is incorrect.",
+  passwordTooManyAttempts: "Too many attempts. Please try again later.",
+  genericError: "Something went wrong. Please try again.",
+} as const;

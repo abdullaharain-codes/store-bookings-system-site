@@ -64,8 +64,24 @@ export async function placeOrder(addressId: number): Promise<OrderResponse> {
   return data;
 }
 
-/** List the authenticated user's orders (paginated). */
-export async function listOrders(): Promise<{ orders: OrdersResponse }> {
+/**
+ * List the authenticated user's orders (paginated).
+ *
+ * The server paginates at a fixed 15/page and has no per_page parameter. When
+ * a positive integer `page` is provided it is sent as `?page=`; when omitted
+ * the backend default applies and no params are sent at all.
+ */
+export async function listOrders(page?: number): Promise<{ orders: OrdersResponse }> {
+  if (page !== undefined) {
+    if (!Number.isFinite(page) || !Number.isInteger(page) || page < 1) {
+      throw new RangeError(`listOrders: page must be a positive integer, received ${page}.`);
+    }
+    const { data } = await apiClient.get<{ orders: OrdersResponse }>("/orders", {
+      params: { page },
+    });
+    return data;
+  }
+
   const { data } = await apiClient.get<{ orders: OrdersResponse }>("/orders");
   return data;
 }

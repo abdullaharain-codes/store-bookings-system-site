@@ -102,12 +102,9 @@ export function useToggleWishlist() {
   // so a rapid double click would otherwise fire two requests.
   const inFlightRef = useRef<Set<number>>(new Set());
   const [pendingIds, setPendingIds] = useState<Set<number>>(new Set());
-  // The product the mutation last tried, so a 401 can re-behave as a guest.
-  const lastProductRef = useRef<number | null>(null);
 
   const redirectGuest = useCallback(
-    (productId: number) => {
-      lastProductRef.current = productId;
+    (_productId: number) => {
       const target = location.pathname + location.search;
       if (isSafeInternalPath(target)) {
         navigate("/login", { state: { from: target } });
@@ -118,14 +115,19 @@ export function useToggleWishlist() {
     [location.pathname, location.search, navigate]
   );
 
+  // The product id travels as the mutation VARIABLE, so each response is
+  // handled against the product that actually produced it — never against
+  // "whichever mutation fired last" (which stranded a concurrent product's
+  // pending flag and announced the wrong reply).
+  const clearPending = useCallback((productId: number) => {
+    inFlightRef.current.delete(productId);
+    setPendingIds(new Set(inFlightRef.current));
+  }, []);
+
   const mutation = useMutation({
     mutationFn: (productId: number) => toggleWishlist(productId),
-    onSuccess: (data) => {
-      const productId = lastProductRef.current;
-      if (productId !== null) {
-        inFlightRef.current.delete(productId);
-        setPendingIds(new Set(inFlightRef.current));
-      }
+    onSuccess: (data, productId) => {
+      clearPending(productId);
       queryClient.invalidateQueries({ queryKey: queryKeys.wishlist });
       setStatus("success");
       announce(
@@ -134,16 +136,12 @@ export function useToggleWishlist() {
           : WISHLIST_REMOVED_ANNOUNCEMENT
       );
     },
-    onError: (error) => {
-      const productId = lastProductRef.current;
-      if (productId !== null) {
-        inFlightRef.current.delete(productId);
-        setPendingIds(new Set(inFlightRef.current));
-      }
+    onError: (error, productId) => {
+      clearPending(productId);
 
       if (getApiErrorStatus(error) === 401) {
         setStatus("guest");
-        if (productId !== null) redirectGuest(productId);
+        redirectGuest(productId);
         return;
       }
 
@@ -162,7 +160,6 @@ export function useToggleWishlist() {
         return;
       }
 
-      lastProductRef.current = productId;
       inFlightRef.current.add(productId);
       setPendingIds(new Set(inFlightRef.current));
       setStatus("pending");

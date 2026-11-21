@@ -151,10 +151,10 @@ describe("wishlist flow", () => {
     await router.navigate("/wishlist");
     await waitFor(() => expect(probe.path).toBe("/wishlist"));
 
-    const remove = await screen.findByRole("button", {
+    const grid = await screen.findByRole("list", { name: "Saved products" });
+    const remove = await within(grid).findByRole("button", {
       name: "Remove from wishlist",
     });
-    const grid = screen.getByRole("list", { name: "Saved products" });
     expect(within(grid).getAllByRole("listitem").length).toBeGreaterThan(0);
 
     await user.click(remove);

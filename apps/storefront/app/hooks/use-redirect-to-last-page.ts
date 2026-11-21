@@ -1,6 +1,5 @@
 import { useEffect } from "react";
 import { useLocation, useNavigate } from "react-router";
-import type { ProductsResponse, ServicesResponse } from "@ecommerce/api-client";
 
 /**
  * Listing pages' guard for an out-of-range ?page= (TASK B3-4 F3).
@@ -16,8 +15,15 @@ import type { ProductsResponse, ServicesResponse } from "@ecommerce/api-client";
  * A total of 0 is a genuine empty catalogue/result set and must NOT redirect —
  * the listings render their empty states instead.
  */
+interface PaginatorLike {
+  data: unknown[];
+  total: number;
+  current_page: number;
+  last_page: number;
+}
+
 export function useRedirectToLastPage(
-  data: ProductsResponse | ServicesResponse | undefined,
+  data: PaginatorLike | undefined,
   getHref: (lastPage: number) => string,
 ): void {
   const navigate = useNavigate();

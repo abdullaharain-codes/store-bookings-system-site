@@ -21,16 +21,20 @@ import {
   testProductDetails,
   testProducts,
   testShippingFee,
+  testUser,
 } from "./handlers";
 import {
+  resetCancelOrderDelay,
   resetLastPlaceOrderBody,
   resetPlaceOrderDelay,
   setAddressesSource,
+  setCancelOrderError,
   setOrdersSource,
   setPlaceOrderError,
   testAddresses,
 } from "./handlers-checkout";
 import { setWishlistError, setWishlistSource } from "./handlers-wishlist";
+import { resetProfileUpdateTracking, setAddressesSourceAccount, setPasswordChangeError, setProfileDelay, setProfileSource } from "./handlers-account";
 import { recordedRequests } from "./server";
 
 configure({ asyncUtilTimeout: 3000 });
@@ -69,12 +73,19 @@ afterEach(() => {
   setPlaceOrderError(null);
   resetLastPlaceOrderBody();
   resetPlaceOrderDelay();
+  setCancelOrderError(null);
+  resetCancelOrderDelay();
   // The wishlist is per-test: a toggle mutates the pool, so the next test must
   // start from an empty wishlist and no forced error.
   setWishlistSource([]);
   setWishlistError(null);
   cartPatchBodies.length = 0;
   recordedRequests.length = 0;
+  setProfileSource(testUser);
+  setPasswordChangeError(null);
+  setProfileDelay(0);
+  resetProfileUpdateTracking();
+  setAddressesSourceAccount(testAddresses);
 });
 
 afterAll(() => {

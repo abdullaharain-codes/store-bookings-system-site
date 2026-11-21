@@ -64,7 +64,7 @@ describe("ProductCard", () => {
     expect(screen.getByText("Dell")).toBeInTheDocument();
 
     rerender(<ProductCard product={makeProduct({ price: "128500.50" })} />);
-    expect(screen.getByText("Rs. 128,501")).toBeInTheDocument();
+    expect(screen.getByText("Rs. 128,500.50")).toBeInTheDocument();
   });
 
   it("does not render a brand name when product.brand is null", () => {

@@ -40,6 +40,11 @@ export interface CreateAddressData {
   is_default?: boolean;
 }
 
+/** Updatable address fields — is_default is NEVER sent by the forms (Part 5). */
+export type UpdateAddressData = Partial<
+  Omit<CreateAddressData, "is_default">
+>;
+
 // ─── Envelope types ─────────────────────────────────────────────────────────
 
 export interface AddressesResponse {
@@ -48,6 +53,10 @@ export interface AddressesResponse {
 
 export interface AddressResponse {
   address: Address;
+}
+
+export interface AddressMessageResponse {
+  message: string;
 }
 
 // ─── Endpoint wrappers ──────────────────────────────────────────────────────
@@ -65,6 +74,36 @@ export async function createAddress(
   const { data } = await apiClient.post<AddressResponse>(
     "/addresses",
     addressData,
+  );
+  return data;
+}
+
+/** Update an existing address. */
+export async function updateAddress(
+  id: number,
+  addressData: UpdateAddressData,
+): Promise<AddressResponse> {
+  const { data: result } = await apiClient.put<AddressResponse>(
+    `/addresses/${id}`,
+    addressData,
+  );
+  return result;
+}
+
+/** Delete an address. */
+export async function deleteAddress(id: number): Promise<AddressMessageResponse> {
+  const { data } = await apiClient.delete<AddressMessageResponse>(
+    `/addresses/${id}`,
+  );
+  return data;
+}
+
+/** Set an address as the user's default. */
+export async function setDefaultAddress(
+  id: number,
+): Promise<AddressMessageResponse> {
+  const { data } = await apiClient.post<AddressMessageResponse>(
+    `/addresses/${id}/default`,
   );
   return data;
 }

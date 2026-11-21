@@ -73,3 +73,33 @@ export function orderStatusLabel(status: string): string {
 export function orderPaymentStatusLabel(paymentStatus: string): string {
   return ORDER_PAYMENT_STATUS_LABELS[paymentStatus] ?? paymentStatus;
 }
+
+/* ── orders list ────────────────────────────────────────────────────────── */
+
+export const ORDERS_LIST_TITLE = "My orders";
+export const ORDERS_LIST_LOADING_LABEL = "Loading orders";
+export const ORDERS_LIST_ERROR_TITLE = "Orders unavailable";
+export const ORDERS_LIST_ERROR_MESSAGE =
+  "Your orders could not be loaded. Please try again.";
+export const ORDERS_LIST_RETRY_LABEL = "Try again";
+export const ORDERS_LIST_EMPTY_TITLE = "No orders yet";
+export const ORDERS_LIST_EMPTY_MESSAGE =
+  "When you place an order, it will appear here.";
+export const ORDERS_LIST_EMPTY_ACTION_LABEL = "Start shopping";
+export const ORDERS_LIST_EMPTY_ACTION_HREF = "/shop";
+export const ORDERS_LIST_ORDER_NUMBER_LABEL = "Order";
+export const ORDERS_LIST_PLACED_LABEL = "Placed";
+export const ORDERS_LIST_TOTAL_LABEL = "Total";
+export const ORDERS_LIST_VIEW_ORDER_LABEL = "View order";
+export const ORDERS_LIST_PAGE_ARIA_LABEL = "Orders pages";
+
+export const ORDER_CANCEL_LABEL = "Cancel order";
+export const ORDER_CANCEL_CONFIRM_TITLE = "Cancel order?";
+export const ORDER_CANCEL_CONFIRM_MESSAGE =
+  "Are you sure you want to cancel this order?";
+export const ORDER_CANCEL_CONFIRM_ACTION = "Cancel order";
+export const ORDER_CANCEL_CANCEL_ACTION = "Keep order";
+export const ORDER_CANCEL_SUCCESS_ANNOUNCEMENT = "Order cancelled";
+export const ORDER_CANCEL_GENERIC_ERROR =
+  "We couldn't cancel your order. Please try again.";
+

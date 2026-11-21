@@ -1,15 +1,19 @@
-import { useEffect, useRef } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useEffect, useRef, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useSearchParams } from "react-router";
-import { getOrder, useAuthStore } from "@ecommerce/api-client";
+import { cancelOrder, getOrder, useAuthStore } from "@ecommerce/api-client";
 import {
+  Button,
   ErrorState,
   LoadingSkeleton,
+  Modal,
   buttonStyles,
   formatPrice,
 } from "@ecommerce/ui";
 import { siteConfig } from "../../config/site";
 import { queryKeys } from "../../hooks/query-keys";
+import { getApiErrorStatus, userMessageFor } from "../../lib/api-error";
+import { handleExpiredSession } from "../../lib/handle-expired-session";
 import { isNotFoundError } from "../../lib/is-not-found";
 import { useAnnounce } from "../common/Announcer";
 import { DetailNotFound } from "../common/DetailNotFound";
@@ -17,6 +21,13 @@ import { PageContainer } from "../common/PageContainer";
 import { PageHeading } from "../common/PageHeading";
 import { formatPlacedDate } from "./format-placed-date";
 import {
+  ORDER_CANCEL_CANCEL_ACTION,
+  ORDER_CANCEL_CONFIRM_ACTION,
+  ORDER_CANCEL_CONFIRM_MESSAGE,
+  ORDER_CANCEL_CONFIRM_TITLE,
+  ORDER_CANCEL_GENERIC_ERROR,
+  ORDER_CANCEL_LABEL,
+  ORDER_CANCEL_SUCCESS_ANNOUNCEMENT,
   ORDER_DETAIL_ADDRESS_LABEL,
   ORDER_DETAIL_BACK_HREF,
   ORDER_DETAIL_BACK_LABEL,
@@ -60,6 +71,7 @@ import {
 export function OrderDetailView({ orderId }: { orderId: number }) {
   const navigate = useNavigate();
   const announce = useAnnounce();
+  const queryClient = useQueryClient();
   const [searchParams] = useSearchParams();
   const isSessionChecked = useAuthStore((state) => state.isSessionChecked);
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
@@ -81,6 +93,60 @@ export function OrderDetailView({ orderId }: { orderId: number }) {
   const showPlaced = searchParams.get("placed") === "1";
   const placedDate = formatPlacedDate(order?.created_at);
 
+  // ── cancel order (TASK B4-3a) ───────────────────────────────────────────
+  // The button exists ONLY for a pending order: the server rejects every other
+  // status with a 422, so offering the action would be a dead end.
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  // Synchronous guard: React Query's isPending only flips on the next render,
+  // so a rapid double click would otherwise fire two cancel requests.
+  const cancelInFlightRef = useRef(false);
+  // A cancel that 404s (the order vanished or is not the user's) switches the
+  // whole page into the not-found state.
+  const [cancelNotFound, setCancelNotFound] = useState(false);
+
+  const cancelMutation = useMutation({
+    mutationFn: () => cancelOrder(orderId),
+    onSuccess: () => {
+      cancelInFlightRef.current = false;
+      setConfirmOpen(false);
+      // Only the ["orders"] family (list pages + this detail) is invalidated.
+      // Only the ["orders"] family (list pages + this detail) is invalidated.
+      queryClient.invalidateQueries({ queryKey: queryKeys.orders });
+      announce(ORDER_CANCEL_SUCCESS_ANNOUNCEMENT);
+    },
+    onError: (error) => {
+      cancelInFlightRef.current = false;
+      const status = getApiErrorStatus(error);
+      if (status === 404) {
+        setConfirmOpen(false);
+        setCancelNotFound(true);
+        return;
+      }
+      if (status === 401) {
+        // The shared session handling owns a 401: drop the local session so
+        // the require-auth guard sends the shopper to /login.
+        handleExpiredSession();
+        setConfirmOpen(false);
+        return;
+      }
+      announce(userMessageFor(error, ORDER_CANCEL_GENERIC_ERROR));
+    },
+  });
+
+  const startCancel = () => {
+    if (cancelInFlightRef.current) return;
+    setConfirmOpen(true);
+  };
+
+  const confirmCancel = () => {
+    if (cancelInFlightRef.current) return;
+    cancelInFlightRef.current = true;
+    cancelMutation.mutate();
+  };
+
+  const showNotFound = notFound || cancelNotFound;
+  const canCancel = order?.status === "pending" && !cancelNotFound;
+
   // Announce the placement exactly once, after the order has actually rendered
   // (so screen readers hear it with the banner already in the DOM).
   const announcedRef = useRef(false);
@@ -91,7 +157,7 @@ export function OrderDetailView({ orderId }: { orderId: number }) {
     }
   }, [showPlaced, order, announce]);
 
-  const pageTitle = notFound
+  const pageTitle = showNotFound
     ? ORDER_DETAIL_NOT_FOUND_TITLE
     : order
       ? `Order ${order.order_number}`
@@ -100,10 +166,10 @@ export function OrderDetailView({ orderId }: { orderId: number }) {
   return (
     <>
       <title>{`${pageTitle} | ${siteConfig.name}`}</title>
-      {notFound && <meta name="robots" content="noindex" />}
+      {showNotFound && <meta name="robots" content="noindex" />}
 
       <PageContainer>
-        {notFound ? (
+        {showNotFound ? (
           <DetailNotFound
             title={ORDER_DETAIL_NOT_FOUND_TITLE}
             message={ORDER_DETAIL_NOT_FOUND_MESSAGE}
@@ -256,7 +322,17 @@ export function OrderDetailView({ orderId }: { orderId: number }) {
               </div>
             </div>
 
-            <div className="mt-[var(--space-6)]">
+            <div className="mt-[var(--space-6)] flex flex-wrap items-center gap-[var(--space-3)]">
+              {canCancel && (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={startCancel}
+                  disabled={cancelMutation.isPending}
+                >
+                  {ORDER_CANCEL_LABEL}
+                </Button>
+              )}
               <Link
                 to={ORDER_DETAIL_CONTINUE_HREF}
                 className={buttonStyles({ variant: "primary" })}
@@ -267,6 +343,36 @@ export function OrderDetailView({ orderId }: { orderId: number }) {
           </>
         )}
       </PageContainer>
+
+      <Modal
+        isOpen={confirmOpen}
+        onClose={() => setConfirmOpen(false)}
+        aria-label={ORDER_CANCEL_CONFIRM_TITLE}
+      >
+        <h2 className="text-[length:var(--font-size-lg)] font-semibold text-[var(--color-text-primary)]">
+          {ORDER_CANCEL_CONFIRM_TITLE}
+        </h2>
+        <p className="mt-[var(--space-2)] text-sm text-[var(--color-text-secondary)]">
+          {ORDER_CANCEL_CONFIRM_MESSAGE}
+        </p>
+        <div className="mt-[var(--space-4)] flex flex-wrap justify-end gap-[var(--space-3)]">
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => setConfirmOpen(false)}
+          >
+            {ORDER_CANCEL_CANCEL_ACTION}
+          </Button>
+          <Button
+            type="button"
+            variant="primary"
+            onClick={confirmCancel}
+            disabled={cancelMutation.isPending}
+          >
+            {ORDER_CANCEL_CONFIRM_ACTION}
+          </Button>
+        </div>
+      </Modal>
     </>
   );
 }
