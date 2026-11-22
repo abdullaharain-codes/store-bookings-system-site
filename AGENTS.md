@@ -17,7 +17,7 @@ Rewritten 2026-11-20 (merged from CLAUDE.md, which is now only a pointer). If so
 - Create and edit files with the Write/Edit tools. No rewrite one-liners on source files (-replace | Set-Content, Python or Node scripts).
 - Read files with Get-Content -Encoding UTF8. Never write repo files with Set-Content/Out-File (the PowerShell 5.1 default encoding corrupts UTF-8). Keep new docs and scripts ASCII only.
 - Git (absolute): never run git checkout, git restore, git reset, git clean, git stash or git revert. No commits unless the owner says so: the owner commits and pushes to GitHub, and a task ends with the worktree intentionally dirty. Uncommitted work is the owner's; never discard it, fix forward by editing it back by hand. git status, git diff, git log and git show are fine.
-- Branch: wip/frontend-stage-b.
+- Branch: wip/frontend-stage-b. Repo path: C:\dev\E-commerce (outside OneDrive, never move it back). Remote: origin on GitHub (private). The owner commits and pushes after each green milestone.
 
 ## 4. Working agreement (strict)
 - Tests FIRST: write the test file before the implementation it covers, run it, SHOW the real RED output, then implement. Never claim a RED you did not observe; if implementation came first, say so.
@@ -87,10 +87,10 @@ Laravel modules live in server/app/Modules/*; controllers in app/Http/Controller
 
 ## 12. Known debt and current queue
 - Phase 12 hardening: 13 of 21 items are open (see the checklist in phases.md); #14 (password sign-out) is resolved by PW-PROOF-3 (scripts/pw-proof.ps1, two cookie jars, mutations); item 21 tracks the residual no-stored-hash window.
-- OrderService float money (fix in Phase 12); Badge success contrast; hand-rolled button classes in CartView, SiteHeader and ListingFilters; hard-coded strings in config/site.ts; ShippingFeeService default 200; the admin app has no role guard (Stage C); the repo lives inside OneDrive (REPO-MOVE planned).
+- OrderService float money (fix in Phase 12); Badge success contrast; hand-rolled button classes in CartView, SiteHeader and ListingFilters; hard-coded strings in config/site.ts; ShippingFeeService default 200; the admin app has no role guard (Stage C); the repo was moved out of OneDrive to C:\dev\E-commerce on 2026-11-20 (REPO-MOVE done).
 - Dead link: /account/addresses is linked from the account hub (routes/account._index.tsx) and asserted in account._index.test.tsx; the page arrives with B4-3b-3. Do not remove the link.
 - profile.flow once failed with 'Ada UpdatedAda Updated' under load (0 of 15 reproduced; UNPROVEN, parked).
-- Queue (the owner sets the order per task): REPO-MOVE (clone to C:\dev\E-commerce), B4-3b-3 addresses page, BK-0 + B5 booking, B6 / B6b / B7, Stage C admin, Phase 12, Phase 13.
+- Queue (the owner sets the order per task): B4-3b-3 addresses page, BK-0 + B5 booking, B6 / B6b / B7, Stage C admin, Phase 12, Phase 13.
 
 ## 13. Language and reports
 Write everything (code comments, notes, reports) in plain English. Never translate or reword command output; every count in a report must come from a command you ran. Final report order: A Result (3 lines), B What I did ("I did X because Y; proof: Z"), C Evidence (exact command + pasted output; PROVEN / UNPROVEN / UNKNOWN), D Files changed, E Not done / skipped / surprises, F Questions or risks for the owner, G State after (git count with group counts, "no commit made"). Findings first, concise; list deliberate omissions and surprises.
