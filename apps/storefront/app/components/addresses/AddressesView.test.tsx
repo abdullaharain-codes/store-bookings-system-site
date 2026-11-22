@@ -1,8 +1,12 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse, delay } from "msw";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { MemoryRouter } from "react-router";
 import { useAuthStore } from "@ecommerce/api-client";
+import { AnnouncerProvider } from "../common/Announcer";
+import { queryKeys } from "../../hooks/query-keys";
 import { renderWithProviders } from "../../test/utils";
 import { server } from "../../test/server";
 import { session } from "../../test/handlers";
@@ -14,6 +18,11 @@ import {
   setAddressesSource,
 } from "../../test/handlers-addresses";
 import AddressesView from "./AddressesView";
+
+const handleExpiredSessionMock = vi.hoisted(() => vi.fn());
+vi.mock("../../lib/handle-expired-session", () => ({
+  handleExpiredSession: handleExpiredSessionMock,
+}));
 
 const testUser = {
   id: 7,
@@ -33,6 +42,10 @@ describe("AddressesView", () => {
   beforeEach(() => {
     resetAddressesSource();
     session.start();
+    handleExpiredSessionMock.mockReset();
+    handleExpiredSessionMock.mockImplementation(() => {
+      useAuthStore.setState({ isAuthenticated: false, user: null });
+    });
     useAuthStore.setState({
       user: testUser,
       isAuthenticated: true,
@@ -314,6 +327,129 @@ describe("AddressesView", () => {
     expect(screen.getByRole("status")).toHaveTextContent("Address updated");
   });
 
+  it("edit clears optional fields and sends empty value without is_default", async () => {
+    const user = userEvent.setup();
+    renderAddresses();
+
+    await screen.findByText("12 Mall Road");
+    expect(screen.getByText("Gulberg III")).toBeInTheDocument();
+
+    let putBody: Record<string, unknown> | null = null;
+    server.use(
+      http.put(ADDRESS_URL(1), async ({ request }) => {
+        putBody = (await request.json()) as Record<string, unknown>;
+        setAddressesSource([
+          {
+            id: 1,
+            user_id: 7,
+            label: "Home",
+            recipient_name: "Ali Khan",
+            phone: "03001234567",
+            address_line_1: "12 Mall Road",
+            address_line_2: null,
+            city: "Lahore",
+            postal_code: "54000",
+            is_default: true,
+            created_at: "2026-08-25T10:00:00.000000Z",
+            updated_at: "2026-08-25T10:00:00.000000Z",
+          },
+          {
+            id: 2,
+            user_id: 7,
+            label: "Office",
+            recipient_name: "Ali Khan",
+            phone: "03007654321",
+            address_line_1: "8 Clifton Block 5",
+            address_line_2: null,
+            city: "Karachi",
+            postal_code: null,
+            is_default: false,
+            created_at: "2026-08-25T10:00:00.000000Z",
+            updated_at: "2026-08-25T10:00:00.000000Z",
+          },
+        ]);
+        return HttpResponse.json({
+          address: {
+            id: 1,
+            user_id: 7,
+            label: "Home",
+            recipient_name: "Ali Khan",
+            phone: "03001234567",
+            address_line_1: "12 Mall Road",
+            address_line_2: null,
+            city: "Lahore",
+            postal_code: "54000",
+            is_default: true,
+            created_at: "2026-08-25T10:00:00.000000Z",
+            updated_at: "2026-08-25T10:00:00.000000Z",
+          },
+        });
+      }),
+    );
+
+    const editButtons = screen.getAllByRole("button", { name: "Edit" });
+    await user.click(editButtons[0]);
+
+    const line2 = await screen.findByLabelText("Address line 2 (optional)");
+    await user.clear(line2);
+    await user.click(screen.getByRole("button", { name: "Save address" }));
+
+    await waitFor(() => expect(putBody).not.toBeNull());
+    expect(Object.prototype.hasOwnProperty.call(putBody, "address_line_2")).toBe(true);
+    expect((putBody as Record<string, unknown> | null)?.["address_line_2"]).toBe("");
+    expect(Object.prototype.hasOwnProperty.call(putBody, "is_default")).toBe(false);
+
+    await waitFor(() =>
+      expect(screen.queryByText("Gulberg III")).not.toBeInTheDocument(),
+    );
+  });
+
+  it("edit double-submit guard sends exactly one PUT", async () => {
+    const user = userEvent.setup();
+    renderAddresses();
+
+    await screen.findByText("12 Mall Road");
+
+    let putCount = 0;
+    server.use(
+      http.put(ADDRESS_URL(1), async ({ request }) => {
+        putCount += 1;
+        await delay(100);
+        await request.json();
+        return HttpResponse.json({
+          address: {
+            id: 1,
+            user_id: 7,
+            label: "Home",
+            recipient_name: "Ali Khan",
+            phone: "03001234567",
+            address_line_1: "99 New Road",
+            address_line_2: "Gulberg III",
+            city: "Lahore",
+            postal_code: "54000",
+            is_default: true,
+            created_at: "2026-08-25T10:00:00.000000Z",
+            updated_at: "2026-08-25T10:00:00.000000Z",
+          },
+        });
+      }),
+    );
+
+    await user.click(screen.getAllByRole("button", { name: "Edit" })[0]);
+    const line1 = await screen.findByLabelText("Address line 1");
+    await user.clear(line1);
+    await user.type(line1, "99 New Road");
+
+    const save = screen.getByRole("button", { name: "Save address" });
+    const form = save.closest("form");
+    await user.click(save);
+    if (form) fireEvent.submit(form);
+
+    await waitFor(() => expect(putCount).toBe(1));
+    await delay(150);
+    expect(putCount).toBe(1);
+  });
+
   it("delete flow: cancel does nothing, confirm deletes once, updates list, announces; 404 refreshes and shows message", async () => {
     const user = userEvent.setup();
     renderAddresses();
@@ -423,23 +559,71 @@ describe("AddressesView", () => {
     expect(screen.getByRole("status")).toHaveTextContent("Default address updated");
 
     await waitFor(() => {
-      const officeCard = screen.getByText("8 Clifton Block 5").closest("article,li,div");
-      expect(officeCard).not.toBeNull();
+      const items = screen.getAllByRole("listitem");
+      const officeItem = items.find((item) => within(item).queryByText("8 Clifton Block 5"));
+      const homeItem = items.find((item) => within(item).queryByText("12 Mall Road"));
+      expect(officeItem).toBeDefined();
+      expect(homeItem).toBeDefined();
+      if (!officeItem || !homeItem) return;
+      expect(within(officeItem).getByText("Default")).toBeInTheDocument();
+      expect(within(homeItem).queryByText("Default")).not.toBeInTheDocument();
     });
+
+    const remainingSetDefault = screen.getAllByRole("button", { name: "Set as default" });
+    expect(remainingSetDefault).toHaveLength(1);
+    const homeItem = screen.getAllByRole("listitem").find((item) => within(item).queryByText("12 Mall Road"));
+    expect(homeItem).toBeDefined();
+    if (homeItem) {
+      expect(within(homeItem).getByRole("button", { name: "Set as default" })).toBeInTheDocument();
+    }
   });
 
-  it("401 on any call drops session and lands on /login", async () => {
+  it("401 on query is handled once and signs the session out", async () => {
     server.use(
       http.get(ADDRESSES_URL, () =>
         HttpResponse.json({ message: "Unauthenticated." }, { status: 401 }),
       ),
     );
 
-    renderAddresses();
+    let notifications = 0;
+    const unsubscribe = useAuthStore.subscribe(() => {
+      notifications += 1;
+    });
+
+    const { rerender, queryClient } = renderWithProviders(<AddressesView />, {
+      entry: "/account/addresses",
+      withAnnouncer: true,
+    });
 
     await waitFor(() => {
       expect(useAuthStore.getState().isAuthenticated).toBe(false);
       expect(useAuthStore.getState().user).toBeNull();
     });
+    await waitFor(() => expect(handleExpiredSessionMock).toHaveBeenCalledTimes(1));
+
+    rerender(
+      <AnnouncerProvider>
+        <QueryClientProvider client={queryClient}>
+          <MemoryRouter initialEntries={["/account/addresses"]}>
+            <AddressesView />
+          </MemoryRouter>
+        </QueryClientProvider>
+      </AnnouncerProvider>,
+    );
+    await waitFor(() => expect(handleExpiredSessionMock).toHaveBeenCalledTimes(1));
+    expect(notifications).toBe(1);
+
+    unsubscribe();
+  });
+
+  it("populates the shared addresses query key used by checkout", async () => {
+    const { queryClient } = renderAddresses();
+
+    await screen.findByText("12 Mall Road");
+    expect(queryClient.getQueryData(queryKeys.addresses)).toBeDefined();
+  });
+
+  it("addresses query key is the same shared key literal", () => {
+    expect(queryKeys.addresses).toEqual(["addresses"]);
   });
 });

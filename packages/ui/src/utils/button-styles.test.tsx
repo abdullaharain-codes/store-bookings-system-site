@@ -4,7 +4,7 @@ import { Button } from "../components/Button";
 import { buttonStyles } from "./button-styles";
 
 describe("buttonStyles", () => {
-  const variants = ["primary", "secondary", "tertiary", "accent"] as const;
+  const variants = ["primary", "secondary", "tertiary", "accent", "danger"] as const;
   const sizes = ["sm", "md", "lg"] as const;
 
   it("returns a distinct non-empty class string for every variant", () => {
@@ -23,6 +23,13 @@ describe("buttonStyles", () => {
       expect(css.trim().length).toBeGreaterThan(0);
     }
     expect(new Set(classes).size).toBe(sizes.length);
+  });
+
+  it("returns destructive classes for the danger variant", () => {
+    const css = buttonStyles({ variant: "danger" });
+    expect(css).toContain("bg-[var(--color-status-error)]");
+    expect(css).toContain("text-white");
+    expect(css).toContain("focus-visible:ring-[var(--color-status-error)]");
   });
 
   it("appends an extra className last", () => {

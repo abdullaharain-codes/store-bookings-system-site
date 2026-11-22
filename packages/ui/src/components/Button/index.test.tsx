@@ -20,4 +20,21 @@ describe("Button", () => {
     expect(button.className).toContain("text-white");
     expect(button.className).toContain("hover:bg-[var(--color-accent-cta)]/90");
   });
+
+  it("renders the danger variant with destructive styling, focus-visible ring, and disabled treatment", () => {
+    render(
+      <Button variant="danger" disabled>
+        Delete
+      </Button>,
+    );
+
+    const button = screen.getByRole("button", { name: "Delete" });
+
+    expect(button.className).toContain("bg-[var(--color-status-error)]");
+    expect(button.className).toContain("text-white");
+    expect(button.className).toContain("focus-visible:ring-[var(--color-status-error)]");
+    expect(button.className).toContain("disabled:pointer-events-none");
+    expect(button.className).toContain("disabled:opacity-50");
+    expect(button).toBeDisabled();
+  });
 });

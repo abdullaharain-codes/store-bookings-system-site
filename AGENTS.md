@@ -31,7 +31,7 @@ Rewritten 2026-11-20 (merged from CLAUDE.md, which is now only a pointer). If so
 
 ## 5. Commands (verified 2026-11-20)
 - Dev ports: storefront 5173, admin 5174, API http://localhost:8000/api/v1.
-- Test totals now: storefront 50 files / 475 tests, packages/api-client 17 / 246, packages/ui 30 / 241 (B4-3b-3, 2026-11-20, all exit 0).
+- Test totals now: storefront 50 files / 479 tests, packages/api-client 17 / 246, packages/ui 30 / 243 (B4-3b-3b, 2026-11-20, all exit 0).
 - apps/storefront/vitest.config.ts sets maxWorkers: 4 (owner decision, SUITE-1/2/3: without it the full suite failed 7 to 11 tests per run from CPU contention; with it 5 of 5 runs were clean at about 33-35 s). Do not remove or change it without an owner decision. Do not raise timeouts.
 - Run suites with npx vitest run from apps/storefront, packages/api-client and packages/ui.
 - Typecheck: delete apps/storefront/node_modules/.tmp/*.tsbuildinfo, then npm --workspace storefront-app exec -- tsc -b (exit 0).
@@ -56,7 +56,7 @@ Pakistani tech store + doorstep IT-service booking platform for a real client (p
 Storefront prerender set = /, /shop, /services, /login, /register + __spa-fallback.html ONLY (cart, checkout, wishlist and account/* are never prerendered).
 
 ## 8. Storefront code conventions
-- Shared UI only in packages/ui (buttonStyles, Button, Input, Modal, Badge, Pagination, ErrorState...). Never hand-rolled button or link class strings in apps (known debt: CartView, SiteHeader, ListingFilters).
+- Shared UI only in packages/ui (buttonStyles, Button, Input, Modal, Badge, Pagination, ErrorState...); ButtonVariant now includes danger. Never hand-rolled button or link class strings in apps (known debt: CartView, SiteHeader, ListingFilters).
 - No hard-coded business values, taxonomy, URLs or user-facing strings in components: named constants in NON-component files (for example *-copy.ts).
 - Every data component has loading, empty and error states and exactly ONE h1 per state. Titles are a single template literal: <title>{`${x} | ${siteConfig.name}`}</title> (a multi-child title prerenders EMPTY; site name "TechFix").
 - Route files are thin and loader-free; data comes via TanStack Query with keys from app/hooks/query-keys.ts (the cart key is shared by the header badge and the cart page). Money math only in app/lib/money.ts (integer minor units); server totals are authoritative; formatPrice shows 2 decimals.

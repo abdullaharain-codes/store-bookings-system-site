@@ -5,7 +5,7 @@ import { clsx } from "clsx";
  * Button uses it internally, and a plain styled Link can reuse it for a CTA
  * that must look exactly like a button without wrapping one in markup.
  */
-export type ButtonVariant = "primary" | "secondary" | "tertiary" | "accent";
+export type ButtonVariant = "primary" | "secondary" | "tertiary" | "accent" | "danger";
 export type ButtonSize = "sm" | "md" | "lg";
 
 interface ButtonStylesOptions {
@@ -19,6 +19,7 @@ const variantStyles: Record<ButtonVariant, string> = {
   secondary: "border border-[var(--color-border-default)] bg-white text-[var(--color-text-primary)] hover:bg-[var(--color-surface-muted)] focus-visible:ring-[var(--color-brand-accent)]",
   tertiary: "text-[var(--color-brand-accent)] hover:underline focus-visible:ring-[var(--color-brand-accent)]",
   accent: "bg-[var(--color-accent-cta)] text-white hover:bg-[var(--color-accent-cta)]/90 focus-visible:ring-[var(--color-accent-cta)]",
+  danger: "bg-[var(--color-status-error)] text-white hover:bg-[var(--color-status-error)]/90 focus-visible:ring-[var(--color-status-error)]",
 };
 
 const sizeStyles: Record<ButtonSize, string> = {

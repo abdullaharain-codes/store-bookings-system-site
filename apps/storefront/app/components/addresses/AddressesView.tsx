@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   createAddress,
@@ -16,6 +16,8 @@ import { queryKeys } from "../../hooks/query-keys";
 import { getApiErrorMessage, getApiFieldErrors, userMessageFor } from "../../lib/api-error";
 import { handleExpiredSession } from "../../lib/handle-expired-session";
 import { useAnnounce } from "../common/Announcer";
+import { PageContainer } from "../common/PageContainer";
+import { PageHeading } from "../common/PageHeading";
 import { AddressForm } from "../checkout/AddressForm";
 import {
   EMPTY_ADDRESS_FORM,
@@ -64,10 +66,10 @@ function toUpdateData(values: AddressFormValues): UpdateAddressData {
     recipient_name: values.recipient_name,
     phone: values.phone,
     address_line_1: values.address_line_1,
-    ...(values.address_line_2 ? { address_line_2: values.address_line_2 } : {}),
+    address_line_2: values.address_line_2,
     city: values.city,
-    ...(values.postal_code ? { postal_code: values.postal_code } : {}),
-    ...(values.label ? { label: values.label } : {}),
+    postal_code: values.postal_code,
+    label: values.label,
   };
 }
 
@@ -108,6 +110,7 @@ export default function AddressesView() {
   const [actionError, setActionError] = useState<string | null>(null);
 
   const addSubmittingRef = useRef(false);
+  const editSubmittingRef = useRef(false);
   const deleteSubmittingRef = useRef(false);
 
   const addressesQuery = useQuery({
@@ -146,6 +149,7 @@ export default function AddressesView() {
     mutationFn: ({ id, values }: { id: number; values: AddressFormValues }) =>
       updateAddress(id, toUpdateData(values)),
     onSuccess: async () => {
+      editSubmittingRef.current = false;
       setEditFieldErrors({});
       setEditValues(null);
       setEditingId(null);
@@ -154,6 +158,7 @@ export default function AddressesView() {
       await invalidateAddresses();
     },
     onError: (error) => {
+      editSubmittingRef.current = false;
       const fieldErrors = flattenFieldErrors(error);
       if (Object.keys(fieldErrors).length > 0) {
         setEditFieldErrors(fieldErrors);
@@ -199,33 +204,41 @@ export default function AddressesView() {
     },
   });
 
+  const queryErrorStatus = (addressesQuery.error as { response?: { status?: number } } | null)?.response?.status;
+
+  useEffect(() => {
+    if (addressesQuery.isError && queryErrorStatus === 401) {
+      handleExpiredSession();
+    }
+  }, [addressesQuery.isError, queryErrorStatus]);
+
   if (addressesQuery.isLoading) {
     return (
       <>
         <title>{`${ADDRESSES_TITLE} | ${siteConfig.name}`}</title>
-        <h1 className="sr-only">{ADDRESSES_TITLE}</h1>
-        <LoadingSkeleton label={ADDRESSES_LOADING_LABEL} items={3} />
+        <PageContainer>
+          <h1 className="sr-only">{ADDRESSES_TITLE}</h1>
+          <LoadingSkeleton label={ADDRESSES_LOADING_LABEL} items={3} />
+        </PageContainer>
       </>
     );
   }
 
   if (addressesQuery.isError) {
-    const status = (addressesQuery.error as { response?: { status?: number } } | null)?.response?.status;
-    if (status === 401) {
-      handleExpiredSession();
-    }
     return (
       <>
         <title>{`${ADDRESSES_TITLE} | ${siteConfig.name}`}</title>
-        <h1>{ADDRESSES_TITLE}</h1>
-        <ErrorState
-          title={ADDRESSES_ERROR_TITLE}
-          message={ADDRESSES_ERROR_MESSAGE}
-          retryLabel={ADDRESSES_RETRY_LABEL}
-          onRetry={() => {
-            void addressesQuery.refetch();
-          }}
-        />
+        <PageContainer>
+          <PageHeading>{ADDRESSES_TITLE}</PageHeading>
+          <ErrorState
+            title={ADDRESSES_ERROR_TITLE}
+            message={ADDRESSES_ERROR_MESSAGE}
+            retryLabel={ADDRESSES_RETRY_LABEL}
+            onRetry={() => {
+              void addressesQuery.refetch();
+            }}
+          />
+        </PageContainer>
       </>
     );
   }
@@ -257,6 +270,7 @@ export default function AddressesView() {
     setEditingId(address.id);
     setEditValues(toFormValues(address));
     setEditFieldErrors({});
+    editSubmittingRef.current = false;
   }
 
   function closeEdit() {
@@ -267,6 +281,8 @@ export default function AddressesView() {
 
   function submitEdit(values: AddressFormValues) {
     if (editingId === null) return;
+    if (editSubmittingRef.current) return;
+    editSubmittingRef.current = true;
     setActionError(null);
     updateMutation.mutate({ id: editingId, values });
   }
@@ -286,13 +302,14 @@ export default function AddressesView() {
   return (
     <>
       <title>{`${ADDRESSES_TITLE} | ${siteConfig.name}`}</title>
-      <h1>{ADDRESSES_TITLE}</h1>
+      <PageContainer>
+        <PageHeading>{ADDRESSES_TITLE}</PageHeading>
 
-      {actionError ? (
-        <p role="alert" className="mt-[var(--space-3)] text-sm text-[var(--color-status-error)]">
-          {actionError}
-        </p>
-      ) : null}
+        {actionError ? (
+          <p role="alert" className="text-sm text-[var(--color-status-error)]">
+            {actionError}
+          </p>
+        ) : null}
 
       {addresses.length > 0 || showAddForm ? (
         <div className="mt-[var(--space-4)]">
@@ -407,8 +424,7 @@ export default function AddressesView() {
           <div className="flex gap-[var(--space-2)]">
             <Button
               type="button"
-              variant="primary"
-              className="!bg-[var(--color-status-error)] hover:!bg-[var(--color-status-error)]/90 focus-visible:!ring-[var(--color-status-error)]"
+              variant="danger"
               onClick={performDelete}
               disabled={deleteMutation.isPending}
             >
@@ -425,6 +441,7 @@ export default function AddressesView() {
           </div>
         </div>
       </Modal>
+      </PageContainer>
     </>
   );
 }
