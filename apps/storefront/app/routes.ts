@@ -72,6 +72,7 @@ export default [
         route("orders", "routes/account.orders._index.tsx"),
         route("orders/:id", "routes/account.orders.$id.tsx"),
         route("profile", "routes/account.profile.tsx"),
+        route("addresses", "routes/account.addresses.tsx"),
       ]),
     ]),
     route("booking", "routes/booking.tsx", [

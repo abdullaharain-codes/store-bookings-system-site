@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { RouteConfigEntry } from "@react-router/dev/routes";
+import reactRouterConfig from "../react-router.config";
 import routes from "./routes";
 
 /**
@@ -140,6 +141,17 @@ describe("storefront route config", () => {
     expect(orderDetail.file).toBe("routes/account.orders.$id.tsx");
     expect(isGuarded("/account/orders/:id")).toBe(true);
     expect(isInSiteShell("/account/orders/:id")).toBe(true);
+  });
+
+  it("guards the saved addresses child, keeps it in the account tree, and excludes it from prerender", async () => {
+    const addressesRoute = entryFor("/account/addresses");
+
+    expect(addressesRoute.file).toBe("routes/account.addresses.tsx");
+    expect(isGuarded("/account/addresses")).toBe(true);
+    expect(isInSiteShell("/account/addresses")).toBe(true);
+
+    const prerender = await reactRouterConfig.prerender();
+    expect(prerender).not.toContain("/account/addresses");
   });
 
   it("declares require-auth as a pathless layout", () => {

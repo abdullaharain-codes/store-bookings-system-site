@@ -696,6 +696,9 @@ export const callCounts = {
   shippingFee: 0,
   addresses: 0,
   addressCreate: 0,
+  addressUpdate: 0,
+  addressDelete: 0,
+  addressSetDefault: 0,
   orders: 0,
   orderShow: 0,
   orderPlace: 0,
@@ -718,6 +721,9 @@ export const callCounts = {
     this.shippingFee = 0;
     this.addresses = 0;
     this.addressCreate = 0;
+    this.addressUpdate = 0;
+    this.addressDelete = 0;
+    this.addressSetDefault = 0;
     this.orders = 0;
     this.orderShow = 0;
     this.orderPlace = 0;

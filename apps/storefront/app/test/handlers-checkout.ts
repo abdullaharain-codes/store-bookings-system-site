@@ -1,6 +1,5 @@
 import { http, HttpResponse, delay } from "msw";
 import type {
-  Address,
   Order,
   OrderItem,
   OrdersResponse,
@@ -16,6 +15,13 @@ import {
   session,
   testUser,
 } from "./handlers";
+import {
+  ADDRESSES_URL,
+  addressHandlers,
+  getAddressesSource,
+  setAddressesSource,
+  testAddresses,
+} from "./handlers-addresses";
 
 /**
  * MSW handlers for the checkout slice (addresses + orders), kept in their own
@@ -37,50 +43,8 @@ import {
  *   a missing OR foreign address is the same 404 {"message":"Not Found"}.
  */
 
-export const ADDRESSES_URL = `${API_URL}/addresses`;
+export { ADDRESSES_URL, setAddressesSource, testAddresses };
 export const ORDERS_URL = `${API_URL}/orders`;
-
-/**
- * Two saved addresses, one flagged default — so a test can prove the checkout
- * form pre-selects the default and still offers the other.
- */
-export const testAddresses: Address[] = [
-  {
-    id: 1,
-    user_id: testUser.id,
-    label: "Home",
-    recipient_name: "Ali Khan",
-    phone: "03001234567",
-    address_line_1: "12 Mall Road",
-    address_line_2: "Gulberg III",
-    city: "Lahore",
-    postal_code: "54000",
-    is_default: true,
-    created_at: "2026-08-25T10:00:00.000000Z",
-    updated_at: "2026-08-25T10:00:00.000000Z",
-  },
-  {
-    id: 2,
-    user_id: testUser.id,
-    label: "Office",
-    recipient_name: "Ali Khan",
-    phone: "03007654321",
-    address_line_1: "8 Clifton Block 5",
-    address_line_2: null,
-    city: "Karachi",
-    postal_code: null,
-    is_default: false,
-    created_at: "2026-08-25T10:00:00.000000Z",
-    updated_at: "2026-08-25T10:00:00.000000Z",
-  },
-];
-
-let addressesSource: Address[] = [...testAddresses];
-let addressSequence = Math.max(...testAddresses.map((address) => address.id));
-
-export function setAddressesSource(addresses: Address[]): void {
-  addressesSource = addresses;
-}
 
 /** The user's orders, newest first — the pool GET /orders and GET /orders/:id read. */
 let ordersSource: Order[] = [];
@@ -132,38 +96,6 @@ export function setPlaceOrderError(
 
 const unauthenticated = () =>
   HttpResponse.json({ message: "Unauthenticated." }, { status: 401 });
-
-/** Laravel's standard validation failure body (server bootstrap/app.php). */
-const validationFailed = (errors: Record<string, string[]>) =>
-  HttpResponse.json(
-    { message: "The given data was invalid.", errors },
-    { status: 422 },
-  );
-
-/**
- * StoreAddressRequest rules, expressed as the same required/max constraints.
- * A blank string fails `required`; an over-long value fails `max` — the two
- * cases a checkout form can realistically send.
- */
-function validateAddressBody(body: Record<string, unknown>): Record<string, string[]> {
-  const errors: Record<string, string[]> = {};
-
-  const required = (field: string, label: string, max: number) => {
-    const value = body[field];
-    if (typeof value !== "string" || value.trim() === "") {
-      errors[field] = [`The ${label} field is required.`];
-    } else if (value.length > max) {
-      errors[field] = [`The ${label} field must not be greater than ${max} characters.`];
-    }
-  };
-
-  required("recipient_name", "recipient name", 255);
-  required("phone", "phone", 20);
-  required("address_line_1", "address line 1", 255);
-  required("city", "city", 100);
-
-  return errors;
-}
 
 /** Snapshot an order line from the product pool, mirroring OrderService's copy. */
 function snapshotItems(
@@ -217,50 +149,7 @@ export function setCancelOrderError(
 }
 
 export const checkoutHandlers = [
-  /** GET /addresses — the user's saved addresses as a plain array. */
-  http.get(ADDRESSES_URL, () => {
-    callCounts.addresses += 1;
-    if (!sessionGuardActive()) return unauthenticated();
-    return HttpResponse.json({ addresses: addressesSource });
-  }),
-
-  /**
-   * POST /addresses — 201 { address }. New addresses are NOT made default:
-   * the server only changes the default via /addresses/{id}/default.
-   */
-  http.post(ADDRESSES_URL, async ({ request }) => {
-    callCounts.addressCreate += 1;
-    if (!sessionGuardActive()) return unauthenticated();
-
-    const body = (await request.json()) as Record<string, unknown>;
-    const errors = validateAddressBody(body);
-    if (Object.keys(errors).length > 0) return validationFailed(errors);
-
-    addressSequence += 1;
-    const address: Address = {
-      id: addressSequence,
-      user_id: testUser.id,
-      label: typeof body.label === "string" ? body.label : null,
-      recipient_name: String(body.recipient_name),
-      phone: String(body.phone),
-      address_line_1: String(body.address_line_1),
-      address_line_2:
-        typeof body.address_line_2 === "string" && body.address_line_2 !== ""
-          ? body.address_line_2
-          : null,
-      city: String(body.city),
-      postal_code:
-        typeof body.postal_code === "string" && body.postal_code !== ""
-          ? body.postal_code
-          : null,
-      is_default: false,
-      created_at: "2026-08-25T10:00:00.000000Z",
-      updated_at: "2026-08-25T10:00:00.000000Z",
-    };
-    addressesSource = [...addressesSource, address];
-
-    return HttpResponse.json({ address }, { status: 201 });
-  }),
+  ...addressHandlers,
 
   /** GET /orders — the user's orders, paginated 15/page, newest first. */
   http.get(ORDERS_URL, ({ request }) => {
@@ -380,7 +269,7 @@ export const checkoutHandlers = [
       return HttpResponse.json({ message }, { status });
     }
 
-    const address = addressesSource.find((candidate) => candidate.id === body.address_id);
+    const address = getAddressesSource().find((candidate) => candidate.id === body.address_id);
     if (!address) return HttpResponse.json({ message: "Not Found" }, { status: 404 });
 
     const cartItems = getCartItemsSource();

@@ -31,7 +31,7 @@ Rewritten 2026-11-20 (merged from CLAUDE.md, which is now only a pointer). If so
 
 ## 5. Commands (verified 2026-11-20)
 - Dev ports: storefront 5173, admin 5174, API http://localhost:8000/api/v1.
-- Test totals now: storefront 46 files / 454 tests, packages/api-client 17 / 246, packages/ui 30 / 241 (SUITE-3b, 2026-11-20, all exit 0).
+- Test totals now: storefront 50 files / 475 tests, packages/api-client 17 / 246, packages/ui 30 / 241 (B4-3b-3, 2026-11-20, all exit 0).
 - apps/storefront/vitest.config.ts sets maxWorkers: 4 (owner decision, SUITE-1/2/3: without it the full suite failed 7 to 11 tests per run from CPU contention; with it 5 of 5 runs were clean at about 33-35 s). Do not remove or change it without an owner decision. Do not raise timeouts.
 - Run suites with npx vitest run from apps/storefront, packages/api-client and packages/ui.
 - Typecheck: delete apps/storefront/node_modules/.tmp/*.tsbuildinfo, then npm --workspace storefront-app exec -- tsc -b (exit 0).
@@ -88,9 +88,9 @@ Laravel modules live in server/app/Modules/*; controllers in app/Http/Controller
 ## 12. Known debt and current queue
 - Phase 12 hardening: 13 of 21 items are open (see the checklist in phases.md); #14 (password sign-out) is resolved by PW-PROOF-3 (scripts/pw-proof.ps1, two cookie jars, mutations); item 21 tracks the residual no-stored-hash window.
 - OrderService float money (fix in Phase 12); Badge success contrast; hand-rolled button classes in CartView, SiteHeader and ListingFilters; hard-coded strings in config/site.ts; ShippingFeeService default 200; the admin app has no role guard (Stage C); the repo was moved out of OneDrive to C:\dev\E-commerce on 2026-11-20 (REPO-MOVE done).
-- Dead link: /account/addresses is linked from the account hub (routes/account._index.tsx) and asserted in account._index.test.tsx; the page arrives with B4-3b-3. Do not remove the link.
+- /account/addresses is built (B4-3b-3, 2026-11-20): list/add/edit/delete/set-default behind require-auth; hub link and its two assertions in account._index.test.tsx remain.
 - profile.flow once failed with 'Ada UpdatedAda Updated' under load (0 of 15 reproduced; UNPROVEN, parked).
-- Queue (the owner sets the order per task): B4-3b-3 addresses page, BK-0 + B5 booking, B6 / B6b / B7, Stage C admin, Phase 12, Phase 13.
+- Queue (the owner sets the order per task): BK-0 + B5 booking, B6 / B6b / B7, Stage C admin, Phase 12, Phase 13.
 
 ## 13. Language and reports
 Write everything (code comments, notes, reports) in plain English. Never translate or reword command output; every count in a report must come from a command you ran. Final report order: A Result (3 lines), B What I did ("I did X because Y; proof: Z"), C Evidence (exact command + pasted output; PROVEN / UNPROVEN / UNKNOWN), D Files changed, E Not done / skipped / surprises, F Questions or risks for the owner, G State after (git count with group counts, "no commit made"). Findings first, concise; list deliberate omissions and surprises.
