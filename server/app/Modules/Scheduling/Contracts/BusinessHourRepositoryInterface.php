@@ -3,6 +3,7 @@
 namespace App\Modules\Scheduling\Contracts;
 
 use App\Models\BusinessHour;
+use Illuminate\Support\Collection;
 
 interface BusinessHourRepositoryInterface
 {
@@ -13,4 +14,9 @@ interface BusinessHourRepositoryInterface
      * @param  int  $dayOfWeek  0 = Sunday ... 6 = Saturday (Carbon->dayOfWeek)
      */
     public function findByDayOfWeek(int $dayOfWeek): ?BusinessHour;
+
+    /**
+     * @return Collection<int, BusinessHour>
+     */
+    public function all(): Collection;
 }

@@ -5,16 +5,23 @@ namespace App\Modules\Scheduling\Repositories;
 use App\Models\Holiday;
 use App\Modules\Scheduling\Contracts\HolidayRepositoryInterface;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 
 class EloquentHolidayRepository implements HolidayRepositoryInterface
 {
     public function existsOnDate(Carbon $date): bool
     {
-        // The 'date' cast persists as 'Y-m-d H:i:s' (Eloquent writes datetimes
-        // even for date-only columns), so match the whole day as a range
-        // instead of an exact string — and stay sargable on the unique index.
+        // Match by calendar date. The column is DATE and the model casts to
+        // date:Y-m-d, but whereDate also handles legacy datetime-formatted
+        // values. The table is tiny (blocked dates only), so sargability is
+        // not a concern here.
         return Holiday::query()
-            ->whereBetween('date', [$date->copy()->startOfDay(), $date->copy()->endOfDay()])
+            ->whereDate('date', $date->toDateString())
             ->exists();
+    }
+
+    public function all(): Collection
+    {
+        return Holiday::query()->orderBy('date')->get();
     }
 }

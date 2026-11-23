@@ -5,7 +5,9 @@ use App\Http\Controllers\Api\V1\Admin\AssetController as AdminAssetController;
 use App\Http\Controllers\Api\V1\Admin\BannerController as AdminBannerController;
 use App\Http\Controllers\Api\V1\Admin\BookingController as AdminBookingController;
 use App\Http\Controllers\Api\V1\Admin\BrandController as AdminBrandController;
+use App\Http\Controllers\Api\V1\Admin\BusinessHourController as AdminBusinessHourController;
 use App\Http\Controllers\Api\V1\Admin\CategoryController as AdminCategoryController;
+use App\Http\Controllers\Api\V1\Admin\HolidayController as AdminHolidayController;
 use App\Http\Controllers\Api\V1\Admin\OrderController as AdminOrderController;
 use App\Http\Controllers\Api\V1\Admin\ProductController as AdminProductController;
 use App\Http\Controllers\Api\V1\Admin\ReviewController as AdminReviewController;
@@ -256,7 +258,14 @@ Route::prefix('v1')->group(function () {
             Route::post('/reviews/{review}/publish', [AdminReviewController::class, 'publish']);
             Route::post('/reviews/{review}/unpublish', [AdminReviewController::class, 'unpublish']);
 
-            // ── Business Settings (architecture.md §4.1) ──────────────────
+            // Business Hours / Holidays (PRD 9, scheduling config)
+            // Admin-managed weekly schedule and blocked dates used by slot generation.
+            Route::apiResource('business-hours', AdminBusinessHourController::class)
+                ->except(['create', 'edit']);
+            Route::apiResource('holidays', AdminHolidayController::class)
+                ->except(['create', 'edit']);
+
+            // Business Settings (architecture.md 4.1)
             // Generic key/value/type table read via BusinessSetting::getValue().
             // The {setting} closure binding resolves the unique key string to
             // the row; an unknown key fails binding and the global handler
