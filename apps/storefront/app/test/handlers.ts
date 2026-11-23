@@ -705,6 +705,11 @@ export const callCounts = {
   orderCancel: 0,
   wishlist: 0,
   wishlistToggle: 0,
+  bookings: 0,
+  bookingShow: 0,
+  bookingCreate: 0,
+  bookingCancel: 0,
+  bookingAvailability: 0,
   reset() {
     this.login = 0;
     this.register = 0;
@@ -730,6 +735,11 @@ export const callCounts = {
     this.orderCancel = 0;
     this.wishlist = 0;
     this.wishlistToggle = 0;
+    this.bookings = 0;
+    this.bookingShow = 0;
+    this.bookingCreate = 0;
+    this.bookingCancel = 0;
+    this.bookingAvailability = 0;
   },
 };
 

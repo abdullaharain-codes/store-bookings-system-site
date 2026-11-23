@@ -35,6 +35,7 @@ import {
 } from "./handlers-checkout";
 import { setWishlistError, setWishlistSource } from "./handlers-wishlist";
 import { resetProfileUpdateTracking, setAddressesSourceAccount, setPasswordChangeError, setProfileDelay, setProfileSource } from "./handlers-account";
+import { resetBookingsSource, setBookingCancelCutoffError, setBookingConflictError } from "./handlers-bookings";
 import { recordedRequests } from "./server";
 
 configure({ asyncUtilTimeout: 3000 });
@@ -86,6 +87,9 @@ afterEach(() => {
   setProfileDelay(0);
   resetProfileUpdateTracking();
   setAddressesSourceAccount(testAddresses);
+  resetBookingsSource();
+  setBookingConflictError(false);
+  setBookingCancelCutoffError(false);
 });
 
 afterAll(() => {

@@ -115,6 +115,23 @@ export {
   type ChangePasswordData,
   type ChangePasswordResponse,
 } from "./profile";
+export {
+  getServiceAvailability,
+  createBooking,
+  getBookings,
+  getBooking,
+  cancelBooking,
+  type BookingStatus,
+  type BookingServiceSummary,
+  type Booking,
+  type AvailabilitySlot,
+  type ServiceAvailabilityService,
+  type ServiceAvailabilityResponse,
+  type CreateBookingData,
+  type BookingResponse,
+  type BookingsPaginator,
+  type BookingsResponse,
+} from "./bookings";
 export { useAuthStore, type User, type AuthState } from "./stores/auth-store";
 export { usePendingActionStore } from "./stores/pending-action-store";
 export {

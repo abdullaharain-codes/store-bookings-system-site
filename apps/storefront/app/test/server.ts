@@ -3,6 +3,7 @@ import { handlers } from "./handlers";
 import { checkoutHandlers } from "./handlers-checkout";
 import { wishlistHandlers } from "./handlers-wishlist";
 import { accountHandlers } from "./handlers-account";
+import { bookingsHandlers } from "./handlers-bookings";
 
 /**
  * Node-side MSW server for jsdom tests. Started from app/test/setup.ts and
@@ -18,7 +19,8 @@ export const server = setupServer(
   ...handlers,
   ...checkoutHandlers,
   ...wishlistHandlers,
-  ...accountHandlers
+  ...accountHandlers,
+  ...bookingsHandlers
 );
 
 /**
