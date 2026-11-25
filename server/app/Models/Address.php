@@ -21,6 +21,7 @@ class Address extends Model
         'address_line_2',
         'city',
         'postal_code',
+        'map_link',
         'is_default',
     ];
 

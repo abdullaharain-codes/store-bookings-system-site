@@ -12,11 +12,9 @@ class UpdateProfileRequest extends FormRequest
     }
 
     /**
-     * The profile's mutable fields. Only `name` exists to change: the users
-     * table is name/email/password (no phone column), and email is deliberately
-     * absent — it is the login identifier, and this codebase has no
-     * verification/re-confirmation flow to re-prove ownership of a new one
-     * (see ProfileService::updateProfile for the reasoning).
+     * Mutable profile fields. `name` and `gender` can be updated; email is
+     * deliberately absent because it is the login identifier and this codebase
+     * has no verification/re-confirmation flow for changing it.
      *
      * @return array<string, list<string>>
      */
@@ -24,6 +22,7 @@ class UpdateProfileRequest extends FormRequest
     {
         return [
             'name' => ['sometimes', 'string', 'max:255'],
+            'gender' => ['sometimes', 'in:male,female,other'],
         ];
     }
 }

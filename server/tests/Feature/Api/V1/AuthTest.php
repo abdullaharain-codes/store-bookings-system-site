@@ -41,6 +41,7 @@ test('user can register successfully', function () {
         'email' => 'test@example.com',
         'password' => 'password123',
         'password_confirmation' => 'password123',
+        'gender' => 'male',
     ]);
 
     $response->assertStatus(201)
@@ -55,6 +56,7 @@ test('registration assigns customer role', function () {
         'email' => 'role@example.com',
         'password' => 'password123',
         'password_confirmation' => 'password123',
+        'gender' => 'female',
     ]);
 
     $response->assertStatus(201);
@@ -82,6 +84,7 @@ test('registration fails with duplicate email', function () {
         'email' => 'existing@example.com',
         'password' => 'password123',
         'password_confirmation' => 'password123',
+        'gender' => 'male',
     ]);
 
     $response->assertStatus(422)
@@ -94,6 +97,7 @@ test('registration fails when password confirmation mismatches', function () {
         'email' => 'mismatch@example.com',
         'password' => 'password123',
         'password_confirmation' => 'different',
+        'gender' => 'male',
     ]);
 
     $response->assertStatus(422)
@@ -111,6 +115,7 @@ test('registration fails safely when the customer role is missing', function () 
         'email' => 'orphan@example.com',
         'password' => 'password123',
         'password_confirmation' => 'password123',
+        'gender' => 'other',
     ]);
 
     $response->assertStatus(500);
@@ -244,6 +249,7 @@ test('register endpoint is rate limited after 5 attempts', function () {
             'email' => "rate{$i}@example.com",
             'password' => 'password123',
             'password_confirmation' => 'password123',
+            'gender' => 'male',
         ])->assertStatus(201);
     }
 
@@ -253,5 +259,6 @@ test('register endpoint is rate limited after 5 attempts', function () {
         'email' => 'ratelimited@example.com',
         'password' => 'password123',
         'password_confirmation' => 'password123',
+        'gender' => 'male',
     ])->assertStatus(429);
 });

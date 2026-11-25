@@ -24,17 +24,25 @@ class ProfileService
     ) {}
 
     /**
-     * Apply the mutable profile fields. Only `name` is editable: the users
-     * table carries name/email/password (no phone column exists), and email is
-     * deliberately withheld â€” it is the login identifier
-     * (Auth::attempt uses it) and this codebase has no email-verification or
-     * re-confirmation flow, so a silent email swap would change the account's
-     * login credential with no proof beyond the existing session.
+     * Apply the mutable profile fields. `name` and `gender` are editable; email
+     * is deliberately withheld because it is the login identifier and this
+     * codebase has no email-verification or re-confirmation flow.
      */
     public function updateProfile(User $user, array $data): User
     {
+        $dirty = false;
+
         if (array_key_exists('name', $data)) {
             $user->name = $data['name'];
+            $dirty = true;
+        }
+
+        if (array_key_exists('gender', $data)) {
+            $user->gender = $data['gender'];
+            $dirty = true;
+        }
+
+        if ($dirty) {
             $user->save();
         }
 

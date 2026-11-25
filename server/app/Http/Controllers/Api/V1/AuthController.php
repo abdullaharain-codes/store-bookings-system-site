@@ -29,6 +29,7 @@ class AuthController extends Controller
             'email' => $request->email,
             'password' => $request->password,
             'role_id' => $customerRole->id,
+            'gender' => $request->gender,
         ]);
 
         Auth::login($user);

@@ -87,6 +87,7 @@ test('register throttles at the 6th attempt per minute per IP', function () {
             'email' => "rate{$i}@example.com",
             'password' => 'password123',
             'password_confirmation' => 'password123',
+            'gender' => 'male',
         ])->assertStatus(201);
     }
 
@@ -97,6 +98,7 @@ test('register throttles at the 6th attempt per minute per IP', function () {
         'email' => 'ratelimited@example.com',
         'password' => 'password123',
         'password_confirmation' => 'password123',
+        'gender' => 'male',
     ])->assertStatus(429);
 });
 

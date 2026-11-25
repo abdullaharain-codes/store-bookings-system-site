@@ -19,7 +19,7 @@ use Illuminate\Support\Facades\Validator;
  */
 class CreateAdminUser extends Command
 {
-    protected $signature = 'admin:create {--name=} {--email=} {--password=}';
+    protected $signature = 'admin:create {--name=} {--email=} {--password=} {--gender=other}';
 
     protected $description = 'Create an admin user (interactive prompts for any missing options)';
 
@@ -30,6 +30,7 @@ class CreateAdminUser extends Command
         $name = $this->option('name') ?: $this->ask('Admin name');
         $email = $this->option('email') ?: $this->ask('Admin email');
         $password = $this->option('password') ?: $this->secret('Admin password');
+        $gender = $this->option('gender') ?: 'other';
 
         if ($name === null || $email === null || $password === null) {
             $this->error('Name, email and password are all required.');
@@ -39,9 +40,9 @@ class CreateAdminUser extends Command
 
         // Same validation rules as registration (RegisterRequest::baseRules),
         // including email uniqueness — a duplicate fails here before any
-        // write happens.
+        // write happens. Gender defaults to 'other' for admin provisioning.
         $validator = Validator::make(
-            ['name' => $name, 'email' => $email, 'password' => $password],
+            ['name' => $name, 'email' => $email, 'password' => $password, 'gender' => $gender],
             RegisterRequest::baseRules(),
         );
 
@@ -73,6 +74,7 @@ class CreateAdminUser extends Command
             'email' => $email,
             'password' => $password,
             'role_id' => $adminRole->id,
+            'gender' => $gender,
         ]);
 
         $this->info("Admin user created: {$user->email}");

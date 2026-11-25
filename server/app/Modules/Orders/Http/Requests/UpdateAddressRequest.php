@@ -2,6 +2,7 @@
 
 namespace App\Modules\Orders\Http\Requests;
 
+use App\Modules\Orders\Support\MapLinkRules;
 use Illuminate\Foundation\Http\FormRequest;
 
 class UpdateAddressRequest extends FormRequest
@@ -25,6 +26,7 @@ class UpdateAddressRequest extends FormRequest
             'address_line_2' => ['nullable', 'string', 'max:255'],
             'city' => ['sometimes', 'string', 'max:100'],
             'postal_code' => ['nullable', 'string', 'max:20'],
+            'map_link' => MapLinkRules::sometimes(),
             'label' => ['nullable', 'string', 'max:50'],
             'is_default' => ['nullable', 'boolean'],
         ];

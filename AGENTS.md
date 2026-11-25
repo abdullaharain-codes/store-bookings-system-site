@@ -88,6 +88,10 @@ Laravel modules live in server/app/Modules/*; controllers in app/Http/Controller
 - Serviceable areas = `BusinessSetting` JSON city list + address city validation on booking create (BE8).
 - Booking photo = V1 but after the wizard exists (BE9).
 - A holiday cannot be created on a date that still has active (pending/confirmed/technician_on_the_way) bookings; admin must reschedule them first (with a reason note), then the day can be blocked. Enforced in the backend (BE7), plus admin UI shows the list of bookings for that date (Stage C).
+- DECISION (BE8a): gender is stored on the user profile; orders/bookings keep immutable gender snapshots (BE8a-2).
+- DECISION (BE8a): address `map_link` is required and validated by an allow-list (google.com/www.google.com/maps.google.com maps paths, maps.app.goo.gl, goo.gl/maps), https only, no userinfo, max 500.
+- DECISION (BE8a): address is required for bookings and orders (enforcement in BE8a-2/BE8b as scoped).
+- DECISION (BE8a): technician selection/assignment is V2, not in BE8a.
 
 ## 12. Known debt and current queue
 - Phase 12 hardening: 13 of 21 items are open (see the checklist in phases.md); #14 (password sign-out) is resolved by PW-PROOF-3 (scripts/pw-proof.ps1, two cookie jars, mutations); item 21 tracks the residual no-stored-hash window.
@@ -96,7 +100,7 @@ Laravel modules live in server/app/Modules/*; controllers in app/Http/Controller
 - profile.flow once failed with 'Ada UpdatedAda Updated' under load (0 of 15 reproduced; UNPROVEN, parked).
 - Holiday request `validationData()` override reads raw JSON (TrimStrings bypass) and does not cover form-encoded bodies (TRACKED).
 - Booking create allows address_id null (doorstep needs an address; decide with BE8) (TRACKED).
-- Queue (the owner sets the order per task): BK-1 done -> BE7 reschedule + holiday-block rule -> BE8 -> BE9 -> B5 booking UI -> B6 / B6b / B7 -> Stage C admin -> Phase 12 -> Phase 13.
+- Queue (the owner sets the order per task): BK-1 done -> BE8a-1 done (gender + address map_link) -> BE8a-2 (orders + bookings snapshot + complaint fields) -> BE8b -> BE7 reschedule + holiday-block rule -> BE8 -> BE9 -> FE tasks (register/profile gender UI, address map_link UI) -> B5 booking UI -> B6 / B6b / B7 -> Stage C admin -> Phase 12 -> Phase 13.
 
 ## 13. Language and reports
 Write everything (code comments, notes, reports) in plain English. Never translate or reword command output; every count in a report must come from a command you ran. Final report order: A Result (3 lines), B What I did ("I did X because Y; proof: Z"), C Evidence (exact command + pasted output; PROVEN / UNPROVEN / UNKNOWN), D Files changed, E Not done / skipped / surprises, F Questions or risks for the owner, G State after (git count with group counts, "no commit made"). Findings first, concise; list deliberate omissions and surprises.

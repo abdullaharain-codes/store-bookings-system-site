@@ -2,6 +2,7 @@
 
 namespace App\Modules\Orders\Http\Requests;
 
+use App\Modules\Orders\Support\MapLinkRules;
 use Illuminate\Foundation\Http\FormRequest;
 
 class StoreAddressRequest extends FormRequest
@@ -25,6 +26,7 @@ class StoreAddressRequest extends FormRequest
             'address_line_2' => ['nullable', 'string', 'max:255'],
             'city' => ['required', 'string', 'max:100'],
             'postal_code' => ['nullable', 'string', 'max:20'],
+            'map_link' => MapLinkRules::required(),
             'label' => ['nullable', 'string', 'max:50'],
             'is_default' => ['nullable', 'boolean'],
         ];

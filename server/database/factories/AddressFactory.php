@@ -25,6 +25,7 @@ class AddressFactory extends Factory
             'address_line_2' => fake()->optional()->secondaryAddress(),
             'city' => fake()->city(),
             'postal_code' => fake()->optional()->numerify('#####'),
+            'map_link' => 'https://maps.app.goo.gl/'.fake()->regexify('[A-Za-z0-9]{10}'),
             'is_default' => false,
         ];
     }

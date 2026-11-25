@@ -21,6 +21,7 @@ class RegisterRequest extends FormRequest
             // Minimum length here only; 'confirmed' below is an HTTP-only
             // concern (there is no confirmation field on the console).
             'password' => ['required', 'string', 'min:8'],
+            'gender' => ['required', 'in:male,female,other'],
         ];
     }
 

@@ -59,6 +59,7 @@ test('authenticated user can create an address', function () {
         'phone' => '0300-1234567',
         'address_line_1' => '123 Main Street',
         'city' => 'Lahore',
+        'map_link' => 'https://maps.app.goo.gl/abc123',
     ];
 
     $response = $this->actingAs($this->user)->postJson('/api/v1/addresses', $data);
@@ -78,7 +79,7 @@ test('add to address validates required fields', function () {
     $response = $this->actingAs($this->user)->postJson('/api/v1/addresses', []);
 
     $response->assertStatus(422)
-        ->assertJsonValidationErrors(['recipient_name', 'phone', 'address_line_1', 'city']);
+        ->assertJsonValidationErrors(['recipient_name', 'phone', 'address_line_1', 'city', 'map_link']);
 });
 
 // ─── PUT /addresses/{address} ──────────────────────────────────────────────
