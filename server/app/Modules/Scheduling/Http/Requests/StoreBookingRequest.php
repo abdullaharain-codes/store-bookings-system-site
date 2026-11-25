@@ -2,8 +2,11 @@
 
 namespace App\Modules\Scheduling\Http\Requests;
 
+use App\Modules\Scheduling\Support\BookingDeviceTypes;
+use App\Modules\Scheduling\Support\BookingIssueTypes;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Carbon;
+use Illuminate\Validation\Rule;
 
 class StoreBookingRequest extends FormRequest
 {
@@ -23,8 +26,12 @@ class StoreBookingRequest extends FormRequest
             'service_id' => ['required', 'integer', 'exists:services,id'],
             'scheduled_slot_start' => ['required', 'date'],
             'scheduled_slot_end' => ['required', 'date', 'after:scheduled_slot_start'],
-            'address_id' => ['nullable', 'integer', 'exists:addresses,id'],
-            'problem_description' => ['nullable', 'string'],
+            'address_id' => ['required', 'integer', 'exists:addresses,id'],
+            'issue_type' => ['required', Rule::in(BookingIssueTypes::all())],
+            'device_type' => ['required', Rule::in(BookingDeviceTypes::all())],
+            'brand' => ['required', 'string', 'max:100'],
+            'model' => ['nullable', 'string', 'max:100'],
+            'problem_description' => ['required', 'string', 'min:10', 'max:2000'],
         ];
     }
 

@@ -23,6 +23,8 @@ class OrderFactory extends Factory
             'phone' => fake()->numerify('03##-#######'),
             'address_line_1' => fake()->address(),
             'city' => fake()->city(),
+            'map_link' => 'https://maps.app.goo.gl/'.fake()->regexify('[A-Za-z0-9]{10}'),
+            'customer_gender' => fake()->randomElement(['male', 'female', 'other']),
             'subtotal' => number_format(fake()->randomFloat(2, 100, 5000), 2, '.', ''),
             'shipping_fee' => '200.00',
             'total' => number_format(fake()->randomFloat(2, 300, 5200), 2, '.', ''),

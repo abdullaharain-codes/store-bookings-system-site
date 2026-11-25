@@ -63,6 +63,18 @@ class OrderService
             throw new ResourceNotFoundException;
         }
 
+        if ($user->gender === null) {
+            throw new OrderValidationException(
+                'Please set your gender in your profile before placing an order.',
+            );
+        }
+
+        if ($address->map_link === null) {
+            throw new OrderValidationException(
+                'Please add a Google Maps link to this address before placing an order.',
+            );
+        }
+
         // ── 2. Validate cart is non-empty ──
         $cart = $this->cartRepo->findOrCreateForUser($user);
         $cart->load('items.product');
@@ -171,6 +183,8 @@ class OrderService
                 'address_line_2' => $address->address_line_2,
                 'city' => $address->city,
                 'postal_code' => $address->postal_code,
+                'map_link' => $address->map_link,
+                'customer_gender' => $user->gender,
                 'subtotal' => $subtotal,
                 'shipping_fee' => $shippingFee,
                 'total' => $total,

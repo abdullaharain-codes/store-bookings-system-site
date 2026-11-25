@@ -32,6 +32,10 @@ class BookingController extends Controller
             $window['scheduled_slot_start'],
             $window['scheduled_slot_end'],
             $request->validated('address_id'),
+            $request->validated('issue_type'),
+            $request->validated('device_type'),
+            $request->validated('brand'),
+            $request->validated('model'),
             $request->validated('problem_description'),
         );
 

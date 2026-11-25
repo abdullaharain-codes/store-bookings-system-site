@@ -23,6 +23,8 @@ class Order extends Model
         'address_line_2',
         'city',
         'postal_code',
+        'map_link',
+        'customer_gender',
         'subtotal',
         'shipping_fee',
         'total',

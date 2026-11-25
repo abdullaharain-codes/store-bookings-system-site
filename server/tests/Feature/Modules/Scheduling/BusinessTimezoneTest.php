@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\Address;
 use App\Models\BusinessHour;
 use App\Models\BusinessSetting;
 use App\Models\Holiday;
@@ -250,13 +251,22 @@ test('a returned slot instant books cleanly and is stored as the same instant', 
         ->assertOk()
         ->json('slots.0');
 
-    $response = $this->actingAs(User::factory()->create())
+    $user = User::factory()->create();
+    $address = Address::factory()->create(['user_id' => $user->id]);
+
+    $response = $this->actingAs($user)
         ->postJson('/api/v1/bookings', [
             'service_id' => $service->id,
             // Exactly the string the availability endpoint handed back, offset
             // and all. It must be stored as 04:00 UTC, not 09:00 UTC.
             'scheduled_slot_start' => $slot['start'],
             'scheduled_slot_end' => $slot['end'],
+            'address_id' => $address->id,
+            'issue_type' => 'hardware',
+            'device_type' => 'laptop',
+            'brand' => 'Dell',
+            'model' => 'XPS 15',
+            'problem_description' => 'Screen flickers after boot and sometimes freezes.',
         ]);
 
     $response->assertCreated();
@@ -274,14 +284,24 @@ test('booking the same returned slot twice is refused as an overlap', function (
     $slot = $this->getJson('/api/v1/services/ac-repair/availability?date=2026-09-21')
         ->json('slots.0');
 
+    $user1 = User::factory()->create();
+    $address1 = Address::factory()->create(['user_id' => $user1->id]);
+    $user2 = User::factory()->create();
+    $address2 = Address::factory()->create(['user_id' => $user2->id]);
+
     $payload = [
         'service_id' => $service->id,
         'scheduled_slot_start' => $slot['start'],
         'scheduled_slot_end' => $slot['end'],
+        'issue_type' => 'hardware',
+        'device_type' => 'laptop',
+        'brand' => 'Dell',
+        'model' => 'XPS 15',
+        'problem_description' => 'Screen flickers after boot and sometimes freezes.',
     ];
 
-    $this->actingAs(User::factory()->create())->postJson('/api/v1/bookings', $payload)->assertCreated();
-    $this->actingAs(User::factory()->create())->postJson('/api/v1/bookings', $payload)->assertStatus(422);
+    $this->actingAs($user1)->postJson('/api/v1/bookings', $payload + ['address_id' => $address1->id])->assertCreated();
+    $this->actingAs($user2)->postJson('/api/v1/bookings', $payload + ['address_id' => $address2->id])->assertStatus(422);
 
     // And the availability endpoint no longer offers the booked instant.
     expect(tzStarts($this->getJson('/api/v1/services/ac-repair/availability?date=2026-09-21')->json('slots')))
@@ -298,10 +318,19 @@ test('a slot booked in business-local terms still frees exactly one window', fun
     $slot = $this->getJson('/api/v1/services/ac-repair/availability?date=2026-09-21')
         ->json('slots.0');
 
-    $this->actingAs(User::factory()->create())->postJson('/api/v1/bookings', [
+    $user = User::factory()->create();
+    $address = Address::factory()->create(['user_id' => $user->id]);
+
+    $this->actingAs($user)->postJson('/api/v1/bookings', [
         'service_id' => $service->id,
         'scheduled_slot_start' => $slot['start'],
         'scheduled_slot_end' => $slot['end'],
+        'address_id' => $address->id,
+        'issue_type' => 'hardware',
+        'device_type' => 'laptop',
+        'brand' => 'Dell',
+        'model' => 'XPS 15',
+        'problem_description' => 'Screen flickers after boot and sometimes freezes.',
     ])->assertCreated();
 
     // Only 00:30 Karachi is gone; the rest of that business day survives, and

@@ -23,6 +23,23 @@ beforeEach(function () {
 
 // ─── Authorization ──────────────────────────────────────────────────────────
 
+function bookingApiPayload(Service $service, Address $address, array $overrides = []): array
+{
+    $start = now()->addDays(1)->startOfHour();
+
+    return array_merge([
+        'service_id' => $service->id,
+        'scheduled_slot_start' => $start->format('Y-m-d H:i:s'),
+        'scheduled_slot_end' => $start->copy()->addMinutes(60)->format('Y-m-d H:i:s'),
+        'address_id' => $address->id,
+        'issue_type' => 'hardware',
+        'device_type' => 'laptop',
+        'brand' => 'Dell',
+        'model' => 'XPS 15',
+        'problem_description' => 'Printer keeps jamming during long jobs.',
+    ], $overrides);
+}
+
 test('guest gets 401 on every booking endpoint', function () {
     $this->postJson('/api/v1/bookings', [])->assertStatus(401);
     $this->getJson('/api/v1/bookings')->assertStatus(401);
@@ -38,13 +55,11 @@ test('authenticated user can book a published service slot', function () {
     $start = now()->addDays(1)->startOfHour();
     $end = $start->copy()->addMinutes(60);
 
-    $response = $this->actingAs($this->user)->postJson('/api/v1/bookings', [
-        'service_id' => $service->id,
+    $response = $this->actingAs($this->user)->postJson('/api/v1/bookings', bookingApiPayload($service, $address, [
         'scheduled_slot_start' => $start->format('Y-m-d H:i:s'),
         'scheduled_slot_end' => $end->format('Y-m-d H:i:s'),
-        'address_id' => $address->id,
         'problem_description' => 'Printer keeps jamming',
-    ]);
+    ]));
 
     $response->assertCreated()
         ->assertJsonStructure([
@@ -76,6 +91,12 @@ test('store validates required fields and slot ordering', function () {
         'service_id' => 999999,
         'scheduled_slot_start' => now()->addDays(1)->format('Y-m-d H:i:s'),
         'scheduled_slot_end' => now()->addDays(1)->subMinutes(60)->format('Y-m-d H:i:s'),
+        'address_id' => Address::factory()->create(['user_id' => $this->user->id])->id,
+        'issue_type' => 'hardware',
+        'device_type' => 'laptop',
+        'brand' => 'Dell',
+        'model' => 'XPS 15',
+        'problem_description' => 'Printer keeps jamming during long jobs.',
     ]);
 
     $endBeforeStart->assertStatus(422)
@@ -94,11 +115,11 @@ test('store rejects an already-taken window with 422', function () {
         'scheduled_slot_end' => $end,
     ]);
 
-    $response = $this->actingAs($this->user)->postJson('/api/v1/bookings', [
-        'service_id' => $service->id,
+    $address = Address::factory()->create(['user_id' => $this->user->id]);
+    $response = $this->actingAs($this->user)->postJson('/api/v1/bookings', bookingApiPayload($service, $address, [
         'scheduled_slot_start' => $start->format('Y-m-d H:i:s'),
         'scheduled_slot_end' => $end->format('Y-m-d H:i:s'),
-    ]);
+    ]));
 
     $response->assertStatus(422)
         ->assertJsonPath('message', 'This time slot is no longer available. Please choose a different time.');
@@ -108,11 +129,11 @@ test('store rejects an unpublished service (404, indistinguishable from missing)
     $service = Service::factory()->create(['is_published' => false]);
     $start = now()->addDays(1)->startOfHour();
 
-    $response = $this->actingAs($this->user)->postJson('/api/v1/bookings', [
-        'service_id' => $service->id,
+    $address = Address::factory()->create(['user_id' => $this->user->id]);
+    $response = $this->actingAs($this->user)->postJson('/api/v1/bookings', bookingApiPayload($service, $address, [
         'scheduled_slot_start' => $start->format('Y-m-d H:i:s'),
         'scheduled_slot_end' => $start->copy()->addMinutes(60)->format('Y-m-d H:i:s'),
-    ]);
+    ]));
 
     $response->assertStatus(404)
         ->assertJsonPath('message', 'Not Found');
@@ -130,6 +151,11 @@ test('store rejects an address belonging to another user (IDOR)', function () {
         'scheduled_slot_start' => $start->format('Y-m-d H:i:s'),
         'scheduled_slot_end' => $start->copy()->addMinutes(60)->format('Y-m-d H:i:s'),
         'address_id' => $otherAddress->id,
+        'issue_type' => 'hardware',
+        'device_type' => 'laptop',
+        'brand' => 'Dell',
+        'model' => 'XPS 15',
+        'problem_description' => 'Printer keeps jamming during long jobs.',
     ]);
 
     $response->assertStatus(404)

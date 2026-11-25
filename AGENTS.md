@@ -92,6 +92,7 @@ Laravel modules live in server/app/Modules/*; controllers in app/Http/Controller
 - DECISION (BE8a): address `map_link` is required and validated by an allow-list (google.com/www.google.com/maps.google.com maps paths, maps.app.goo.gl, goo.gl/maps), https only, no userinfo, max 500.
 - DECISION (BE8a): address is required for bookings and orders (enforcement in BE8a-2/BE8b as scoped).
 - DECISION (BE8a): technician selection/assignment is V2, not in BE8a.
+- DECISION (BE8a-2): booking `issue_type` allowed values are `hardware|software|network|other`; `device_type` allowed values are `laptop|desktop|printer|router|other`. Shared constants live in `App\Modules\Scheduling\Support\BookingIssueTypes` and `BookingDeviceTypes`.
 
 ## 12. Known debt and current queue
 - Phase 12 hardening: 13 of 21 items are open (see the checklist in phases.md); #14 (password sign-out) is resolved by PW-PROOF-3 (scripts/pw-proof.ps1, two cookie jars, mutations); item 21 tracks the residual no-stored-hash window.
@@ -99,8 +100,10 @@ Laravel modules live in server/app/Modules/*; controllers in app/Http/Controller
 - /account/addresses is built (B4-3b-3, 2026-11-20): list/add/edit/delete/set-default behind require-auth; hub link and its two assertions in account._index.test.tsx remain.
 - profile.flow once failed with 'Ada UpdatedAda Updated' under load (0 of 15 reproduced; UNPROVEN, parked).
 - Holiday request `validationData()` override reads raw JSON (TrimStrings bypass) and does not cover form-encoded bodies (TRACKED).
-- Booking create allows address_id null (doorstep needs an address; decide with BE8) (TRACKED).
-- Queue (the owner sets the order per task): BK-1 done -> BE8a-1 done (gender + address map_link) -> BE8a-2 (orders + bookings snapshot + complaint fields) -> BE8b -> BE7 reschedule + holiday-block rule -> BE8 -> BE9 -> FE tasks (register/profile gender UI, address map_link UI) -> B5 booking UI -> B6 / B6b / B7 -> Stage C admin -> Phase 12 -> Phase 13.
+- RESOLVED by BE8a-2 (2026-11-26): booking create now requires `address_id` and rejects missing/foreign address ownership as before; address_id FK is `nullOnDelete` and booking snapshots preserve address fields.
+- TRACKED (BE8a-2): legacy users with null `gender` and legacy addresses with null `map_link` must complete them in the UI before ordering/booking; API now returns 422 with clear messages.
+- TRACKED (BE8a-2): dev proof scripts post old booking/order payloads and must be updated in a follow-up task (do not fix here): `scripts/bookings-proof.ps1` (POST /bookings missing issue_type/device_type/brand/model/problem_description min 10; also assumes old fields), `scripts/addresses-proof.ps1` (POST/PUT addresses missing required map_link), `scripts/pw-proof.ps1` (places orders/bookings with old payloads), `scripts/dev-seed.ps1` (check for old booking/order payload assumptions before use).
+- Queue (the owner sets the order per task): BK-1 done -> BE8a-1 done (gender + address map_link) -> BE8a-2 done (orders + bookings snapshot + complaint fields) -> BE8b serviceable areas -> BE7 reschedule + holiday-block rule -> BE9 photo -> FE tasks (register/profile gender, address map_link, checkout/booking fields) -> MSW fixtures -> B5 booking UI -> B6 / B6b / B7 -> Stage C admin -> Phase 12 -> Phase 13.
 
 ## 13. Language and reports
 Write everything (code comments, notes, reports) in plain English. Never translate or reword command output; every count in a report must come from a command you ran. Final report order: A Result (3 lines), B What I did ("I did X because Y; proof: Z"), C Evidence (exact command + pasted output; PROVEN / UNPROVEN / UNKNOWN), D Files changed, E Not done / skipped / surprises, F Questions or risks for the owner, G State after (git count with group counts, "no commit made"). Findings first, concise; list deliberate omissions and surprises.

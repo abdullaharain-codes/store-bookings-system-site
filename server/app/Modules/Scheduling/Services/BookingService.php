@@ -54,8 +54,12 @@ class BookingService
         int $serviceId,
         Carbon $startsAt,
         Carbon $endsAt,
-        ?int $addressId = null,
-        ?string $problemDescription = null,
+        int $addressId,
+        string $issueType,
+        string $deviceType,
+        string $brand,
+        ?string $model,
+        string $problemDescription,
     ): ServiceBooking {
         // ── 1. Address ownership check (customer only) ──
         // An optional address must belong to the caller. Same pattern as
@@ -63,15 +67,36 @@ class BookingService
         // FormRequest only verifies the row exists, the SERVICE owns the
         // ownership rule (rules.md §9) — never let one customer book with
         // another customer's address.
-        if ($addressId !== null) {
-            $address = Address::find($addressId);
+        $address = Address::find($addressId);
 
-            if (! $address || $address->user_id !== $user->id) {
-                throw new ResourceNotFoundException;
-            }
+        if (! $address || $address->user_id !== $user->id) {
+            throw new ResourceNotFoundException;
         }
 
-        return DB::transaction(function () use ($user, $serviceId, $startsAt, $endsAt, $addressId, $problemDescription) {
+        if ($user->gender === null) {
+            throw new SchedulingValidationException(
+                'Please set your gender in your profile before booking.',
+            );
+        }
+
+        if ($address->map_link === null) {
+            throw new SchedulingValidationException(
+                'Please add a Google Maps link to this address before booking.',
+            );
+        }
+
+        return DB::transaction(function () use (
+            $user,
+            $serviceId,
+            $startsAt,
+            $endsAt,
+            $address,
+            $issueType,
+            $deviceType,
+            $brand,
+            $model,
+            $problemDescription,
+        ) {
             // Not-found pattern (architecture.md §10): missing and unpublished
             // are deliberately indistinguishable via the shared
             // ResourceNotFoundException (→ 404), matching how unpublished
@@ -104,11 +129,23 @@ class BookingService
             $booking = ServiceBooking::query()->create([
                 'user_id' => $user->id,
                 'service_id' => $service->id,
-                'address_id' => $addressId,
+                'address_id' => $address->id,
+                'recipient_name' => $address->recipient_name,
+                'phone' => $address->phone,
+                'address_line_1' => $address->address_line_1,
+                'address_line_2' => $address->address_line_2,
+                'city' => $address->city,
+                'postal_code' => $address->postal_code,
+                'map_link' => $address->map_link,
+                'customer_gender' => $user->gender,
                 'scheduled_slot_start' => $startsAt,
                 'scheduled_slot_end' => $endsAt,
                 'status' => 'pending',
                 'problem_description' => $problemDescription,
+                'issue_type' => $issueType,
+                'device_type' => $deviceType,
+                'brand' => $brand,
+                'model' => $model,
             ]);
 
             $this->auditLogger->log('ServiceBooking', $booking->id, 'created');

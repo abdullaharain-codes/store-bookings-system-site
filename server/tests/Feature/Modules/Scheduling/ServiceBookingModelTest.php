@@ -134,13 +134,25 @@ test('deleting a user still referenced by a booking is restricted', function () 
     $this->assertDatabaseHas('users', ['id' => $user->id]);
 });
 
-test('deleting an address still referenced by a booking is restricted', function () {
-    // Service bookings do NOT snapshot address fields (unlike orders), so the
-    // address row IS the service location — restrict, not nullOnDelete.
-    $booking = ServiceBooking::factory()->create();
+test('deleting an address referenced by a booking nulls the fk and keeps the snapshot', function () {
+    $booking = ServiceBooking::factory()->create([
+        'recipient_name' => 'Snapshot User',
+        'phone' => '03009998888',
+        'address_line_1' => 'Snapshot Street',
+        'city' => 'Karachi',
+        'map_link' => 'https://maps.app.goo.gl/snapshot',
+    ]);
     $address = $booking->address;
 
-    expect(fn () => $address->delete())->toThrow(QueryException::class);
+    $address->delete();
+
+    $booking->refresh();
+    expect($booking->address_id)->toBeNull()
+        ->and($booking->recipient_name)->toBe('Snapshot User')
+        ->and($booking->phone)->toBe('03009998888')
+        ->and($booking->address_line_1)->toBe('Snapshot Street')
+        ->and($booking->city)->toBe('Karachi')
+        ->and($booking->map_link)->toBe('https://maps.app.goo.gl/snapshot');
 });
 
 test('rescheduledFrom and rescheduledTo link a reschedule chain', function () {

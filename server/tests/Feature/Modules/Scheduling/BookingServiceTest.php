@@ -29,6 +29,10 @@ test('confirmBooking creates one pending ServiceBooking and releases the tempora
         Carbon::parse('2026-10-05 10:00:00'),
         Carbon::parse('2026-10-05 11:00:00'),
         $address->id,
+        'hardware',
+        'laptop',
+        'Dell',
+        'XPS 15',
         'Screen flickering after boot',
     );
 
@@ -55,6 +59,7 @@ test('confirmBooking against an already-held window throws and creates no bookin
     $service = Service::factory()->create(['is_published' => true]);
     $user = User::factory()->create();
     $other = User::factory()->create();
+    $address = Address::factory()->create(['user_id' => $user->id]);
 
     // A live hold from a competing booking flow already owns this window.
     SlotHold::factory()->create([
@@ -68,6 +73,12 @@ test('confirmBooking against an already-held window throws and creates no bookin
         $service->id,
         Carbon::parse('2026-10-05 10:00:00'),
         Carbon::parse('2026-10-05 11:00:00'),
+        $address->id,
+        'hardware',
+        'laptop',
+        'Dell',
+        null,
+        'Screen flickering after boot process.',
     ))->toThrow(SchedulingValidationException::class);
 
     expect(ServiceBooking::query()->count())->toBe(0);
@@ -79,6 +90,7 @@ test('confirmBooking against overlapping existing booking throws and creates not
 
     // One confirmed booking already owns a window that overlaps the attempt
     // (half-open [10:00, 11:00) vs [10:30, 11:30)).
+    $address = Address::factory()->create(['user_id' => $user->id]);
     ServiceBooking::factory()->confirmed()->create([
         'service_id' => $service->id,
         'scheduled_slot_start' => Carbon::parse('2026-10-05 10:00:00'),
@@ -91,6 +103,12 @@ test('confirmBooking against overlapping existing booking throws and creates not
         $service->id,
         Carbon::parse('2026-10-05 10:30:00'),
         Carbon::parse('2026-10-05 11:30:00'),
+        $address->id,
+        'hardware',
+        'laptop',
+        'Dell',
+        null,
+        'Screen flickering after boot process.',
     ))->toThrow(SchedulingValidationException::class);
 
     expect(ServiceBooking::query()->count())->toBe(1);
@@ -99,12 +117,19 @@ test('confirmBooking against overlapping existing booking throws and creates not
 test('confirmBooking for an unpublished service throws ResourceNotFoundException', function () {
     $service = Service::factory()->create(['is_published' => false]);
     $user = User::factory()->create();
+    $address = Address::factory()->create(['user_id' => $user->id]);
 
     expect(fn () => bookingService()->confirmBooking(
         $user,
         $service->id,
         Carbon::parse('2026-10-05 10:00:00'),
         Carbon::parse('2026-10-05 11:00:00'),
+        $address->id,
+        'hardware',
+        'laptop',
+        'Dell',
+        null,
+        'Screen flickering after boot process.',
     ))->toThrow(ResourceNotFoundException::class);
 
     expect(ServiceBooking::query()->count())->toBe(0);
@@ -112,12 +137,19 @@ test('confirmBooking for an unpublished service throws ResourceNotFoundException
 
 test('confirmBooking for a nonexistent service throws ResourceNotFoundException', function () {
     $user = User::factory()->create();
+    $address = Address::factory()->create(['user_id' => $user->id]);
 
     expect(fn () => bookingService()->confirmBooking(
         $user,
         999999,
         Carbon::parse('2026-10-05 10:00:00'),
         Carbon::parse('2026-10-05 11:00:00'),
+        $address->id,
+        'hardware',
+        'laptop',
+        'Dell',
+        null,
+        'Screen flickering after boot process.',
     ))->toThrow(ResourceNotFoundException::class);
 
     expect(ServiceBooking::query()->count())->toBe(0);
@@ -422,6 +454,10 @@ try {
         Illuminate\Support\Carbon::parse($startStr),
         Illuminate\Support\Carbon::parse($endStr),
         $address->id,
+        'hardware',
+        'laptop',
+        'Dell',
+        null,
         'Concurrent booking attempt',
     );
     echo 'OK:'.$booking->id;
