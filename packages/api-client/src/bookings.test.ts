@@ -25,6 +25,19 @@ import type {
   ServiceAvailabilityResponse,
 } from "./bookings";
 
+const bookingService = {
+  id: 3,
+  name: "AC Repair",
+  slug: "ac-repair",
+  description: "Cooling repair service.",
+  price_min: "1500.00",
+  price_max: "3500.00",
+  duration_minutes: 60,
+  is_published: true,
+  created_at: "2026-11-23T10:00:00.000000Z",
+  updated_at: "2026-11-23T10:00:00.000000Z",
+};
+
 const booking: Booking = {
   id: 11,
   user_id: 7,
@@ -40,6 +53,23 @@ const booking: Booking = {
   rescheduled_from_id: null,
   created_at: "2026-11-23T10:00:00.000000Z",
   updated_at: "2026-11-23T10:00:00.000000Z",
+  service: bookingService,
+};
+
+const createBookingResponse: { booking: Booking } = {
+  booking: {
+    id: 11,
+    user_id: 7,
+    service_id: 3,
+    address_id: 4,
+    scheduled_slot_start: "2026-11-24T09:00:00.000000Z",
+    scheduled_slot_end: "2026-11-24T10:00:00.000000Z",
+    status: "pending",
+    problem_description: "AC not cooling",
+    created_at: "2026-11-23T10:00:00.000000Z",
+    updated_at: "2026-11-23T10:00:00.000000Z",
+    service: bookingService,
+  },
 };
 
 const availability: ServiceAvailabilityResponse = {
@@ -118,12 +148,16 @@ describe("bookings", () => {
   });
 
   it("createBooking POSTs exact body to /bookings and unwraps booking envelope", async () => {
-    mockPost.mockResolvedValue({ data: { booking } });
+    mockPost.mockResolvedValue({ data: createBookingResponse });
 
     const result = await createBooking(createPayload);
 
     expect(mockPost).toHaveBeenCalledWith("/bookings", createPayload);
-    expect(result).toEqual({ booking });
+    expect(result).toEqual(createBookingResponse);
+    expect(result.booking).not.toHaveProperty("technician_id");
+    expect(result.booking).not.toHaveProperty("final_price");
+    expect(result.booking).not.toHaveProperty("cancelled_at");
+    expect(result.booking).not.toHaveProperty("rescheduled_from_id");
   });
 
   it("createBooking propagates 404", async () => {
@@ -155,7 +189,27 @@ describe("bookings", () => {
   });
 
   it("getBookings calls GET /bookings and unwraps bookings paginator envelope", async () => {
-    const envelope = { bookings: { data: [booking], total: 1, per_page: 15, current_page: 1 } };
+    const envelope = {
+      bookings: {
+        data: [booking],
+        current_page: 1,
+        first_page_url: "http://localhost/api/v1/bookings?page=1",
+        from: 1,
+        last_page: 1,
+        last_page_url: "http://localhost/api/v1/bookings?page=1",
+        links: [
+          { url: null, label: "&laquo; Previous", active: false, page: null },
+          { url: "http://localhost/api/v1/bookings?page=1", label: "1", active: true, page: 1 },
+          { url: null, label: "Next &raquo;", active: false, page: null },
+        ],
+        next_page_url: null,
+        path: "http://localhost/api/v1/bookings",
+        per_page: 15,
+        prev_page_url: null,
+        to: 1,
+        total: 1,
+      },
+    };
     mockGet.mockResolvedValue({ data: envelope });
 
     const result = await getBookings();
@@ -165,7 +219,25 @@ describe("bookings", () => {
   });
 
   it("getBookings passes page when provided", async () => {
-    mockGet.mockResolvedValue({ data: { bookings: { data: [], total: 0, per_page: 15, current_page: 2 } } });
+    mockGet.mockResolvedValue({
+      data: {
+        bookings: {
+          data: [],
+          current_page: 2,
+          first_page_url: "http://localhost/api/v1/bookings?page=1",
+          from: null,
+          last_page: 2,
+          last_page_url: "http://localhost/api/v1/bookings?page=2",
+          links: [],
+          next_page_url: null,
+          path: "http://localhost/api/v1/bookings",
+          per_page: 15,
+          prev_page_url: "http://localhost/api/v1/bookings?page=1",
+          to: null,
+          total: 0,
+        },
+      },
+    });
 
     await getBookings(2);
 

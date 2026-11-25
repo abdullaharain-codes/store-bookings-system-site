@@ -4,20 +4,23 @@ import { API_URL, callCounts, session } from "./handlers";
 
 /**
  * Single source of truth for booking MSW handlers (availability, create, list,
- * detail, cancel). Mirrors the real server contract (BK-0 STEP 0, 2026-11-23):
+ * detail, cancel). Mirrors the real server contract (BK-0c/BK-1, 2026-11-25):
  * - GET  /services/{slug}/availability?date=YYYY-MM-DD[&mode=nearest]
  *        -> 200 { service, date, timezone, slots, nearest_slot? }
- *        404 when service missing/not published; 422 validation errors.
- * - POST /bookings          -> 201 { booking } (service loaded)
- * - GET  /bookings          -> 200 { bookings: paginator }
- * - GET  /bookings/{id}     -> 200 { booking } (service loaded)
+ *        slots are business-timezone offset strings (+05:00, Asia/Karachi),
+ *        09:00-18:00 with 60 min duration and 15 min buffer (Mon-Sat style).
+ * - POST /bookings          -> 201 { booking } (service loaded; create omits
+ *        technician_id/final_price/cancelled_at/rescheduled_from_id)
+ * - GET  /bookings          -> 200 { bookings: full Laravel paginator }
+ * - GET  /bookings/{id}     -> 200 { booking } (service loaded, full shape)
  * - POST /bookings/{id}/cancel -> 200 { booking }
- * Ownership/unknown booking -> 404 { message: "Not Found" }
- * Conflict (slot taken) -> 422 { message: "This time slot is no longer available. Please choose a different time." }
- * Cancel cutoff -> 422 { message: "Bookings can only be cancelled at least 120 minutes before the scheduled slot." }
- *
- * No customer reschedule endpoint exists on the server. No attachments in
- * StoreBookingRequest.
+ * - Ownership/unknown booking -> 404 { message: "Not Found" }
+ * - Real overlap conflict against stored non-cancelled bookings -> 422 slot unavailable
+ * - Cancel already cancelled -> 422 "This booking has already been cancelled."
+ * - address_id not owned by user -> 404 { message: "Not Found" }
+ * - Cutoff rejection is flag-driven (setBookingCancelCutoffError) because real
+ *   cutoff depends on current time vs slot start and business settings; tests
+ *   need deterministic control without time mocking.
  */
 
 interface AvailabilityService {
@@ -26,23 +29,89 @@ interface AvailabilityService {
   duration_minutes: number;
 }
 
+interface BookingServiceFull {
+  id: number;
+  name: string;
+  slug: string;
+  description: string | null;
+  price_min: string;
+  price_max: string;
+  duration_minutes: number;
+  is_published: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 const defaultAvailabilityService: AvailabilityService = {
   id: 1,
   slug: "ac-repair",
   duration_minutes: 60,
 };
 
+const defaultBookingService: BookingServiceFull = {
+  id: 1,
+  name: "AC Repair",
+  slug: "ac-repair",
+  description: "Cooling repair service.",
+  price_min: "1500.00",
+  price_max: "3500.00",
+  duration_minutes: 60,
+  is_published: true,
+  created_at: "2026-11-23T10:00:00.000000Z",
+  updated_at: "2026-11-23T10:00:00.000000Z",
+};
+
 let availabilityService: AvailabilityService = { ...defaultAvailabilityService };
+let bookingService: BookingServiceFull = { ...defaultBookingService };
 
-interface TestBooking extends Booking {}
+interface StoredBooking extends Booking {
+  user_id: number;
+}
 
-let bookings: TestBooking[] = [];
+let bookings: StoredBooking[] = [];
 let nextBookingId = 100;
 let forceConflict = false;
 let forceCancelCutoff = false;
+let ownedAddressIds = new Set<number>([1, 4]);
 
-function cloneBooking(booking: TestBooking): TestBooking {
-  return { ...booking, service: booking.service ? { ...booking.service } : undefined };
+function cloneService(service: BookingServiceFull): BookingServiceFull {
+  return { ...service };
+}
+
+function toDetailBooking(booking: StoredBooking): Booking {
+  return {
+    id: booking.id,
+    user_id: booking.user_id,
+    service_id: booking.service_id,
+    technician_id: booking.technician_id ?? null,
+    address_id: booking.address_id ?? null,
+    scheduled_slot_start: booking.scheduled_slot_start,
+    scheduled_slot_end: booking.scheduled_slot_end,
+    status: booking.status,
+    problem_description: booking.problem_description ?? null,
+    final_price: booking.final_price ?? null,
+    cancelled_at: booking.cancelled_at ?? null,
+    rescheduled_from_id: booking.rescheduled_from_id ?? null,
+    created_at: booking.created_at,
+    updated_at: booking.updated_at,
+    service: booking.service ? (cloneService(booking.service as BookingServiceFull) as Booking["service"]) : undefined,
+  };
+}
+
+function toCreateBooking(booking: StoredBooking) {
+  return {
+    id: booking.id,
+    user_id: booking.user_id,
+    service_id: booking.service_id,
+    address_id: booking.address_id ?? null,
+    scheduled_slot_start: booking.scheduled_slot_start,
+    scheduled_slot_end: booking.scheduled_slot_end,
+    status: booking.status,
+    problem_description: booking.problem_description ?? null,
+    created_at: booking.created_at,
+    updated_at: booking.updated_at,
+    service: cloneService(booking.service as BookingServiceFull),
+  };
 }
 
 function guard(): HttpResponse<{ message: string }> | null {
@@ -77,6 +146,13 @@ function cutoffError(): HttpResponse<{ message: string }> {
   );
 }
 
+function alreadyCancelledError(): HttpResponse<{ message: string }> {
+  return HttpResponse.json(
+    { message: "This booking has already been cancelled." },
+    { status: 422 },
+  );
+}
+
 function asBookingStatus(value: unknown): BookingStatus {
   const allowed: BookingStatus[] = [
     "pending",
@@ -91,18 +167,41 @@ function asBookingStatus(value: unknown): BookingStatus {
 }
 
 function buildSlots(date: string): Array<{ start: string; end: string }> {
-  return [
-    { start: `${date}T04:00:00.000Z`, end: `${date}T05:00:00.000Z` },
-    { start: `${date}T05:00:00.000Z`, end: `${date}T06:00:00.000Z` },
-  ];
+  // 09:00-18:00 Asia/Karachi (+05:00), 60 min duration, 15 min buffer.
+  const starts = ["09:00:00", "10:15:00", "11:30:00", "12:45:00", "14:00:00", "15:15:00", "16:30:00"];
+  const ends = ["10:00:00", "11:15:00", "12:30:00", "13:45:00", "15:00:00", "16:15:00", "17:30:00"];
+  return starts.map((start, index) => ({
+    start: `${date}T${start}+05:00`,
+    end: `${date}T${ends[index]}+05:00`,
+  }));
+}
+
+function overlaps(startA: string, endA: string, startB: string, endB: string): boolean {
+  const aStart = Date.parse(startA);
+  const aEnd = Date.parse(endA);
+  const bStart = Date.parse(startB);
+  const bEnd = Date.parse(endB);
+  if ([aStart, aEnd, bStart, bEnd].some(Number.isNaN)) return false;
+  return aStart < bEnd && aEnd > bStart;
+}
+
+function hasOverlapConflict(serviceId: number, start: string, end: string): boolean {
+  return bookings.some(
+    (b) =>
+      b.service_id === serviceId &&
+      b.status !== "cancelled" &&
+      overlaps(start, end, b.scheduled_slot_start, b.scheduled_slot_end),
+  );
 }
 
 export function resetBookingsSource() {
   bookings = [];
   nextBookingId = 100;
   availabilityService = { ...defaultAvailabilityService };
+  bookingService = { ...defaultBookingService };
   forceConflict = false;
   forceCancelCutoff = false;
+  ownedAddressIds = new Set<number>([1, 4]);
 }
 
 export function setBookingConflictError(enabled: boolean) {
@@ -115,6 +214,16 @@ export function setBookingCancelCutoffError(enabled: boolean) {
 
 export function setAvailabilityService(service: AvailabilityService) {
   availabilityService = { ...service };
+  bookingService = {
+    ...defaultBookingService,
+    id: service.id,
+    slug: service.slug,
+    duration_minutes: service.duration_minutes,
+  };
+}
+
+export function setOwnedAddressIds(ids: number[]) {
+  ownedAddressIds = new Set<number>(ids);
 }
 
 export const bookingsHandlers = [
@@ -170,19 +279,28 @@ export const bookingsHandlers = [
     if (Object.keys(errors).length > 0) {
       return validationError(errors);
     }
-    if (forceConflict) {
+
+    const addressId = body.address_id === undefined || body.address_id === null ? null : Number(body.address_id);
+    if (addressId !== null && !ownedAddressIds.has(addressId)) {
+      return notFound();
+    }
+
+    const start = String(body.scheduled_slot_start);
+    const end = String(body.scheduled_slot_end);
+    const serviceId = Number(body.service_id);
+    if (forceConflict || hasOverlapConflict(serviceId, start, end)) {
       return conflictError();
     }
 
     const id = nextBookingId++;
-    const booking: TestBooking = {
+    const booking: StoredBooking = {
       id,
       user_id: 7,
-      service_id: Number(body.service_id),
-      address_id: body.address_id === undefined || body.address_id === null ? null : Number(body.address_id),
+      service_id: serviceId,
       technician_id: null,
-      scheduled_slot_start: String(body.scheduled_slot_start),
-      scheduled_slot_end: String(body.scheduled_slot_end),
+      address_id: addressId,
+      scheduled_slot_start: start,
+      scheduled_slot_end: end,
       status: "pending",
       problem_description:
         body.problem_description === undefined || body.problem_description === null
@@ -193,27 +311,53 @@ export const bookingsHandlers = [
       rescheduled_from_id: null,
       created_at: "2026-11-23T10:00:00.000000Z",
       updated_at: "2026-11-23T10:00:00.000000Z",
-      service: {
-        id: Number(body.service_id),
-        slug: availabilityService.slug,
-        duration_minutes: availabilityService.duration_minutes,
-      },
+      service: cloneService({
+        ...bookingService,
+        id: serviceId,
+      }) as Booking["service"],
     };
     bookings.push(booking);
-    return HttpResponse.json({ booking: cloneBooking(booking) }, { status: 201 });
+    return HttpResponse.json({ booking: toCreateBooking(booking) }, { status: 201 });
   }),
 
-  http.get(`${API_URL}/bookings`, () => {
+  http.get(`${API_URL}/bookings`, ({ request }) => {
     callCounts.bookings += 1;
     const denied = guard();
     if (denied) return denied;
-    const data = bookings.map(cloneBooking);
+
+    const url = new URL(request.url);
+    const pageRaw = url.searchParams.get("page");
+    const page = pageRaw ? Math.max(1, Number(pageRaw) || 1) : 1;
+    const perPage = 15;
+    const userBookings = bookings.filter((b) => b.user_id === 7).map(toDetailBooking);
+    const total = userBookings.length;
+    const lastPage = Math.max(1, Math.ceil(total / perPage));
+    const startIndex = (page - 1) * perPage;
+    const data = userBookings.slice(startIndex, startIndex + perPage);
+    const from = data.length > 0 ? startIndex + 1 : null;
+    const to = data.length > 0 ? startIndex + data.length : null;
+    const base = `${API_URL}/bookings`;
+    const pageUrl = (p: number) => `${base}?page=${p}`;
+
     return HttpResponse.json({
       bookings: {
+        current_page: page,
         data,
-        total: data.length,
-        per_page: 15,
-        current_page: 1,
+        first_page_url: pageUrl(1),
+        from,
+        last_page: lastPage,
+        last_page_url: pageUrl(lastPage),
+        links: [
+          { url: page > 1 ? pageUrl(page - 1) : null, label: "&laquo; Previous", active: false, page: page > 1 ? page - 1 : null },
+          { url: pageUrl(page), label: String(page), active: true, page },
+          { url: page < lastPage ? pageUrl(page + 1) : null, label: "Next &raquo;", active: false, page: page < lastPage ? page + 1 : null },
+        ],
+        next_page_url: page < lastPage ? pageUrl(page + 1) : null,
+        path: base,
+        per_page: perPage,
+        prev_page_url: page > 1 ? pageUrl(page - 1) : null,
+        to,
+        total,
       },
     });
   }),
@@ -223,9 +367,9 @@ export const bookingsHandlers = [
     const denied = guard();
     if (denied) return denied;
     const id = Number(params.id);
-    const booking = bookings.find((b) => b.id === id);
+    const booking = bookings.find((b) => b.id === id && b.user_id === 7);
     if (!booking) return notFound();
-    return HttpResponse.json({ booking: cloneBooking(booking) });
+    return HttpResponse.json({ booking: toDetailBooking(booking) });
   }),
 
   http.post(`${API_URL}/bookings/:id/cancel`, ({ params }) => {
@@ -233,14 +377,17 @@ export const bookingsHandlers = [
     const denied = guard();
     if (denied) return denied;
     const id = Number(params.id);
-    const booking = bookings.find((b) => b.id === id);
+    const booking = bookings.find((b) => b.id === id && b.user_id === 7);
     if (!booking) return notFound();
+    if (booking.status === "cancelled") {
+      return alreadyCancelledError();
+    }
     if (forceCancelCutoff) {
       return cutoffError();
     }
     booking.status = asBookingStatus("cancelled");
     booking.cancelled_at = "2026-11-23T10:05:00.000000Z";
     booking.updated_at = "2026-11-23T10:05:00.000000Z";
-    return HttpResponse.json({ booking: cloneBooking(booking) });
+    return HttpResponse.json({ booking: toDetailBooking(booking) });
   }),
 ];

@@ -17,6 +17,7 @@
  * attachments in StoreBookingRequest.
  */
 import apiClient from "./api-client";
+import type { Paginator } from "./catalog";
 
 // --- Entity types -----------------------------------------------------------
 
@@ -29,11 +30,15 @@ export type BookingStatus =
 
 export interface BookingServiceSummary {
   id: number;
-  name?: string;
-  slug?: string;
-  duration_minutes?: number;
-  price_min?: string;
-  price_max?: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  price_min: string;
+  price_max: string;
+  duration_minutes: number;
+  is_published: boolean;
+  created_at: string;
+  updated_at: string;
   [key: string]: unknown;
 }
 
@@ -42,14 +47,14 @@ export interface Booking {
   user_id: number;
   service_id: number;
   address_id: number | null;
-  technician_id: number | null;
+  technician_id?: number | null;
   scheduled_slot_start: string;
   scheduled_slot_end: string;
   status: BookingStatus;
   problem_description: string | null;
-  final_price: string | null;
-  cancelled_at: string | null;
-  rescheduled_from_id: number | null;
+  final_price?: string | null;
+  cancelled_at?: string | null;
+  rescheduled_from_id?: number | null;
   created_at?: string;
   updated_at?: string;
   service?: BookingServiceSummary;
@@ -91,14 +96,7 @@ export interface BookingResponse {
   booking: Booking;
 }
 
-export interface BookingsPaginator {
-  data: Booking[];
-  current_page?: number;
-  last_page?: number;
-  per_page?: number;
-  total?: number;
-  [key: string]: unknown;
-}
+export type BookingsPaginator = Paginator<Booking>;
 
 export interface BookingsResponse {
   bookings: BookingsPaginator;

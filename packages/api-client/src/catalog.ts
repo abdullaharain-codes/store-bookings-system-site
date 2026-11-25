@@ -123,7 +123,7 @@ export interface BrandsResponse {
 /** Laravel paginator `toArray()` shape (top-level on /products). */
 export interface Paginator<T> {
   data: T[];
-  links: { url: string | null; label: string; active: boolean }[];
+  links: { url: string | null; label: string; active: boolean; page: number | null }[];
   current_page: number;
   first_page_url: string | null;
   from: number | null;

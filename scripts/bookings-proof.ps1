@@ -150,31 +150,43 @@ try {
     Register-And-Login $jarC1 $email1 'BK Proof C1' 'C1'
     Register-And-Login $jarC2 $email2 'BK Proof C2' 'C2'
 
-    # P1: availability 3 days ahead + nearest mode once
-    $targetDate = (Get-Date).AddDays(3)
-    if ([int]$targetDate.DayOfWeek -eq 0) { $targetDate = $targetDate.AddDays(1) } # avoid Sunday
-    $dateStr = $targetDate.ToString('yyyy-MM-dd')
-
-    $a1 = Invoke-Api -Id 'P1_date' -Jar $jarC1 -Method 'GET' -Url ($BaseUrl + "/api/v1/services/dev-laptop-checkup/availability?date=$dateStr") -Expected 200 -IsAvailability
+    # P1: availability 3-5 days ahead, skip Sunday; if zero slots try next day within 8-call budget
+    $dateStr = ''
+    $a1 = $null
     $a1Slots = @()
-    if ($null -ne $a1.Json -and $null -ne $a1.Json.slots) { $a1Slots = @($a1.Json.slots) }
-    $a1Count = $a1Slots.Count
+    $a1Count = 0
     $a1OffsetOk = $false
     $a1FirstStart = ''
-    if ($a1Count -gt 0) {
-        $a1FirstStart = [string]$a1Slots[0].start
-        if ($a1FirstStart -match '\+05:00$') { $a1OffsetOk = $true }
+    $dayOffset = 3
+    while ($dayOffset -le 10 -and $a1Count -lt 1) {
+        if ($script:availabilityCalls -ge 8) { throw "P1 failed: availability call budget exhausted before finding slots" }
+        $targetDate = (Get-Date).AddDays($dayOffset)
+        $dayOffset++
+        if ([int]$targetDate.DayOfWeek -eq 0) { continue } # skip Sunday
+        $candidateDate = $targetDate.ToString('yyyy-MM-dd')
+        $candidate = Invoke-Api -Id "P1_date_$candidateDate" -Jar $jarC1 -Method 'GET' -Url ($BaseUrl + "/api/v1/services/dev-laptop-checkup/availability?date=$candidateDate") -Expected 200 -IsAvailability
+        $candidateSlots = @()
+        if ($null -ne $candidate.Json -and $null -ne $candidate.Json.slots) { $candidateSlots = @($candidate.Json.slots) }
+        [Console]::WriteLine("P1_try date=$candidateDate slots_count=$($candidateSlots.Count)")
+        if ($candidateSlots.Count -gt 0) {
+            $dateStr = $candidateDate
+            $a1 = $candidate
+            $a1Slots = $candidateSlots
+            $a1Count = $candidateSlots.Count
+            $a1FirstStart = [string]$a1Slots[0].start
+            if ($a1FirstStart -match '\+05:00$') { $a1OffsetOk = $true }
+        }
     }
-    [Console]::WriteLine("P1_date slots_count=$a1Count offset_plus0500=$a1OffsetOk first_start=$a1FirstStart")
+    if ($a1Count -lt 1) { throw "P1 failed: no slots found in searched date range within budget" }
+    [Console]::WriteLine("P1_date selected_date=$dateStr slots_count=$a1Count offset_plus0500=$a1OffsetOk first_start=$a1FirstStart")
     [Console]::WriteLine("P1_date keys: " + ((Get-JsonKeys $a1.Json) -join ', '))
     [Console]::WriteLine("P1_date raw: " + $a1.Body)
 
+    if ($script:availabilityCalls -ge 8) { throw "P1_nearest skipped: availability call budget exhausted" }
     $a1n = Invoke-Api -Id 'P1_nearest' -Jar $jarC1 -Method 'GET' -Url ($BaseUrl + "/api/v1/services/dev-laptop-checkup/availability?date=$dateStr&mode=nearest") -Expected 200 -IsAvailability
     $hasNearest = ($null -ne $a1n.Json -and $null -ne $a1n.Json.nearest_slot)
     [Console]::WriteLine("P1_nearest has_nearest_slot=$hasNearest")
     [Console]::WriteLine("P1_nearest keys: " + ((Get-JsonKeys $a1n.Json) -join ', '))
-
-    if ($a1Count -lt 1) { throw "P1 failed: no slots returned for $dateStr" }
 
     # P2: create address, create booking
     $addrBody = Join-Path $tmp "bkproof_${rand}_addr.json"
@@ -205,16 +217,43 @@ try {
     [Console]::WriteLine("P2 booking keys: " + ((Get-JsonKeys $b1.Json.booking) -join ', '))
     [Console]::WriteLine("P2 booking raw: " + $b1.Body)
 
-    # P3: same slot same user -> 422; second user -> 422
+    # P3: same slot same user -> 422; second user owns their own address -> 422
     $p3a = Invoke-Api -Id 'P3_same_user' -Jar $jarC1 -Method 'POST' -Url ($BaseUrl + '/api/v1/bookings') -BodyFile $bookBody -Expected 422
     $p3aMsg = ''
     if ($null -ne $p3a.Json -and $null -ne $p3a.Json.message) { $p3aMsg = [string]$p3a.Json.message }
     [Console]::WriteLine("P3_same_user message=$p3aMsg")
 
-    $p3b = Invoke-Api -Id 'P3_other_user' -Jar $jarC2 -Method 'POST' -Url ($BaseUrl + '/api/v1/bookings') -BodyFile $bookBody -Expected 422
+    $addr2Body = Join-Path $tmp "bkproof_${rand}_addr2.json"
+    Write-AsciiFile $addr2Body (@{
+        recipient_name='BK Proof C2'
+        phone='03001234568'
+        address_line_1='456 Test Avenue'
+        address_line_2=''
+        city='Lahore'
+        postal_code='54000'
+        label='Home'
+    } | ConvertTo-Json -Compress)
+    $addr2 = Invoke-Api -Id 'P3_c2_address' -Jar $jarC2 -Method 'POST' -Url ($BaseUrl + '/api/v1/addresses') -BodyFile $addr2Body -Expected 201
+    $addressId2 = [int]$addr2.Json.address.id
+
+    $bookBodyC2 = Join-Path $tmp "bkproof_${rand}_book_c2.json"
+    Write-AsciiFile $bookBodyC2 (@{
+        service_id=[int]$a1.Json.service.id
+        scheduled_slot_start=[string]$slot.start
+        scheduled_slot_end=[string]$slot.end
+        address_id=$addressId2
+        problem_description='Laptop overheating during use.'
+    } | ConvertTo-Json -Compress)
+    $p3b = Invoke-Api -Id 'P3_other_user' -Jar $jarC2 -Method 'POST' -Url ($BaseUrl + '/api/v1/bookings') -BodyFile $bookBodyC2 -Expected 422
     $p3bMsg = ''
     if ($null -ne $p3b.Json -and $null -ne $p3b.Json.message) { $p3bMsg = [string]$p3b.Json.message }
     [Console]::WriteLine("P3_other_user message=$p3bMsg")
+
+    # P3b: customer 2 posting customer 1's address_id -> 404 Not Found (address ownership)
+    $p3bOwn = Invoke-Api -Id 'P3b_other_user_foreign_address' -Jar $jarC2 -Method 'POST' -Url ($BaseUrl + '/api/v1/bookings') -BodyFile $bookBody -Expected 404
+    $p3bOwnMsg = ''
+    if ($null -ne $p3bOwn.Json -and $null -ne $p3bOwn.Json.message) { $p3bOwnMsg = [string]$p3bOwn.Json.message }
+    [Console]::WriteLine("P3b_other_user_foreign_address message=$p3bOwnMsg")
 
     # P4: list and show
     $list = Invoke-Api -Id 'P4_list' -Jar $jarC1 -Method 'GET' -Url ($BaseUrl + '/api/v1/bookings') -Expected 200
