@@ -87,13 +87,15 @@ Laravel modules live in server/app/Modules/*; controllers in app/Http/Controller
 - Customer reschedule = real endpoint (BE7: atomic new-slot booking + cancel old + `rescheduled_from_id`, same 2h cutoff and overlap rules).
 - Serviceable areas = `BusinessSetting` JSON city list + address city validation on booking create (BE8).
 - Booking photo = V1 but after the wizard exists (BE9).
+- A holiday cannot be created on a date that still has active (pending/confirmed/technician_on_the_way) bookings; admin must reschedule them first (with a reason note), then the day can be blocked. Enforced in the backend (BE7), plus admin UI shows the list of bookings for that date (Stage C).
 
 ## 12. Known debt and current queue
 - Phase 12 hardening: 13 of 21 items are open (see the checklist in phases.md); #14 (password sign-out) is resolved by PW-PROOF-3 (scripts/pw-proof.ps1, two cookie jars, mutations); item 21 tracks the residual no-stored-hash window.
 - OrderService float money (fix in Phase 12); Badge success contrast; hand-rolled button classes in CartView, SiteHeader and ListingFilters; hard-coded strings in config/site.ts; ShippingFeeService default 200; the admin app has no role guard (Stage C); the repo was moved out of OneDrive to C:\dev\E-commerce on 2026-11-20 (REPO-MOVE done).
 - /account/addresses is built (B4-3b-3, 2026-11-20): list/add/edit/delete/set-default behind require-auth; hub link and its two assertions in account._index.test.tsx remain.
 - profile.flow once failed with 'Ada UpdatedAda Updated' under load (0 of 15 reproduced; UNPROVEN, parked).
-- Queue (the owner sets the order per task): BE6 done, then seed + real-API booking proof (BK-0c), BE7, BE8, BE9, B5 booking UI, B6, B6b, B7, Stage C admin, Phase 12, Phase 13.
+- Holiday request `validationData()` override reads raw JSON (TrimStrings bypass) and does not cover form-encoded bodies (TRACKED).
+- Queue (the owner sets the order per task): BK-0c done -> MSW/type fidelity fix -> BE7 reschedule + holiday-block rule -> BE8 -> BE9 -> B5 booking UI -> B6 / B6b / B7 -> Stage C admin -> Phase 12 -> Phase 13.
 
 ## 13. Language and reports
 Write everything (code comments, notes, reports) in plain English. Never translate or reword command output; every count in a report must come from a command you ran. Final report order: A Result (3 lines), B What I did ("I did X because Y; proof: Z"), C Evidence (exact command + pasted output; PROVEN / UNPROVEN / UNKNOWN), D Files changed, E Not done / skipped / surprises, F Questions or risks for the owner, G State after (git count with group counts, "no commit made"). Findings first, concise; list deliberate omissions and surprises.
