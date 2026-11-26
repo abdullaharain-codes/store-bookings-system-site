@@ -38,6 +38,8 @@ class ServiceBooking extends Model
         'model',
         'final_price',
         'cancelled_at',
+        'cancellation_reason',
+        'cancellation_note',
         'rescheduled_from_id',
     ];
 

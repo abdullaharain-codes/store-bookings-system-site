@@ -9,6 +9,8 @@ use App\Models\ServiceBooking;
 use App\Models\User;
 use App\Modules\Notifications\Services\NotificationService;
 use App\Modules\Scheduling\Exceptions\SchedulingValidationException;
+use App\Modules\Scheduling\Support\BookingCancellationReasons;
+use App\Modules\Scheduling\Support\BookingRequestData;
 use App\Shared\AuditLogger;
 use App\Shared\Exceptions\ResourceNotFoundException;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
@@ -50,25 +52,15 @@ class BookingService
      *                                   does not belong to the user
      * @throws \InvalidArgumentException if startsAt >= endsAt
      */
-    public function confirmBooking(
-        User $user,
-        int $serviceId,
-        Carbon $startsAt,
-        Carbon $endsAt,
-        int $addressId,
-        string $issueType,
-        string $deviceType,
-        string $brand,
-        ?string $model,
-        string $problemDescription,
-    ): ServiceBooking {
+    public function confirmBooking(User $user, BookingRequestData $data): ServiceBooking
+    {
         // ── 1. Address ownership check (customer only) ──
         // An optional address must belong to the caller. Same pattern as
         // OrderService::placeOrder (which snapshots the address): the
         // FormRequest only verifies the row exists, the SERVICE owns the
         // ownership rule (rules.md §9) — never let one customer book with
         // another customer's address.
-        $address = Address::find($addressId);
+        $address = Address::find($data->addressId);
 
         if (! $address || $address->user_id !== $user->id) {
             throw new ResourceNotFoundException;
@@ -92,24 +84,13 @@ class BookingService
             );
         }
 
-        return DB::transaction(function () use (
-            $user,
-            $serviceId,
-            $startsAt,
-            $endsAt,
-            $address,
-            $issueType,
-            $deviceType,
-            $brand,
-            $model,
-            $problemDescription,
-        ) {
+        return DB::transaction(function () use ($user, $data, $address) {
             // Not-found pattern (architecture.md §10): missing and unpublished
             // are deliberately indistinguishable via the shared
             // ResourceNotFoundException (→ 404), matching how unpublished
             // products are handled in CartService's world.
             $service = Service::query()
-                ->where('id', $serviceId)
+                ->where('id', $data->serviceId)
                 ->where('is_published', true)
                 ->first();
 
@@ -121,17 +102,17 @@ class BookingService
             // A concurrent confirmBooking for an overlapping window is
             // serialised here on SQLite (IMMEDIATE file lock) and MySQL
             // (lockForUpdate row locks on the checked windows).
-            $hold = $this->slotHold->attemptHold($startsAt, $endsAt, $user->id);
+            $hold = $this->slotHold->attemptHold($data->startsAt, $data->endsAt, $user->id);
 
             // Once a real booking exists, the window is reserved by the
-            // booking row itself — an overlapping NON-cancelled booking blocks
+            // booking row itself - an overlapping NON-cancelled booking blocks
             // this one. This is the "ServiceBooking's own status/window"
             // enforcement: the guard below is the minimal creation-time slice;
             // the full availability query is Phase 8.3's scope. It also closes
             // the window left by releasing the hold below: the moment the
             // winner commits, a waiting contender must NOT be able to book the
             // same window again.
-            $this->assertNoOverlappingBooking($startsAt, $endsAt);
+            $this->assertNoOverlappingBooking($data->startsAt, $data->endsAt);
 
             $booking = ServiceBooking::query()->create([
                 'user_id' => $user->id,
@@ -145,14 +126,14 @@ class BookingService
                 'postal_code' => $address->postal_code,
                 'map_link' => $address->map_link,
                 'customer_gender' => $user->gender,
-                'scheduled_slot_start' => $startsAt,
-                'scheduled_slot_end' => $endsAt,
+                'scheduled_slot_start' => $data->startsAt,
+                'scheduled_slot_end' => $data->endsAt,
                 'status' => 'pending',
-                'problem_description' => $problemDescription,
-                'issue_type' => $issueType,
-                'device_type' => $deviceType,
-                'brand' => $brand,
-                'model' => $model,
+                'problem_description' => $data->problemDescription,
+                'issue_type' => $data->issueType,
+                'device_type' => $data->deviceType,
+                'brand' => $data->brand,
+                'model' => $data->model,
             ]);
 
             $this->auditLogger->log('ServiceBooking', $booking->id, 'created');
@@ -510,7 +491,13 @@ class BookingService
         // above (ownership, terminal states, the 2-hour cutoff) stay OUTSIDE
         // the transaction: they validate, they do not write.
         $booking = DB::transaction(function () use ($booking, $previousStatus, $isAdmin) {
-            $booking->update(['status' => 'cancelled', 'cancelled_at' => now()]);
+            $booking->update([
+                'status' => 'cancelled',
+                'cancelled_at' => now(),
+                'cancellation_reason' => $isAdmin
+                    ? BookingCancellationReasons::ADMIN
+                    : BookingCancellationReasons::CUSTOMER,
+            ]);
 
             $this->auditLogger->log('ServiceBooking', $booking->id, 'cancelled', [
                 'previous_status' => $previousStatus,

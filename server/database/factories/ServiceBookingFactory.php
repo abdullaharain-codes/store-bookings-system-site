@@ -106,6 +106,7 @@ class ServiceBookingFactory extends Factory
             'scheduled_slot_start' => now()->addHours(3)->startOfHour(),
             'cancelled_at' => now()->subHour(),
             'status' => 'cancelled',
+            'cancellation_reason' => 'customer',
         ]);
     }
 

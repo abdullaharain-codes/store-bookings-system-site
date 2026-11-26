@@ -203,6 +203,22 @@ test('authenticated user can view their booking detail', function () {
         ->assertJsonStructure(['booking' => ['service']]);
 });
 
+test('booking show and list responses include cancellation reason fields', function () {
+    $booking = ServiceBooking::factory()->cancelled()->create(['user_id' => $this->user->id]);
+
+    $show = $this->actingAs($this->user)->getJson("/api/v1/bookings/{$booking->id}");
+
+    $show->assertOk()
+        ->assertJsonPath('booking.cancellation_reason', 'customer')
+        ->assertJsonPath('booking.cancellation_note', null);
+
+    $list = $this->actingAs($this->user)->getJson('/api/v1/bookings');
+
+    $list->assertOk()
+        ->assertJsonPath('bookings.data.0.cancellation_reason', 'customer')
+        ->assertJsonPath('bookings.data.0.cancellation_note', null);
+});
+
 test('user cannot view another users booking (IDOR)', function () {
     $booking = ServiceBooking::factory()->confirmed()->create(['user_id' => $this->user->id]);
 

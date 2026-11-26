@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\ServiceBooking;
 use App\Modules\Scheduling\Http\Requests\StoreBookingRequest;
 use App\Modules\Scheduling\Services\BookingService;
+use App\Modules\Scheduling\Support\BookingRequestData;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -28,15 +29,7 @@ class BookingController extends Controller
 
         $booking = $this->bookingService->confirmBooking(
             $request->user(),
-            $request->validated('service_id'),
-            $window['scheduled_slot_start'],
-            $window['scheduled_slot_end'],
-            $request->validated('address_id'),
-            $request->validated('issue_type'),
-            $request->validated('device_type'),
-            $request->validated('brand'),
-            $request->validated('model'),
-            $request->validated('problem_description'),
+            BookingRequestData::fromValidated($request->validated(), $window),
         );
 
         return response()->json([

@@ -142,6 +142,22 @@ test('admin can view any booking regardless of owner, with relations', function 
         ->assertJsonStructure(['booking' => ['service', 'user', 'address', 'technician']]);
 });
 
+test('admin booking show and list responses include cancellation reason fields', function () {
+    $booking = ServiceBooking::factory()->cancelled()->create(['user_id' => $this->customer->id]);
+
+    $show = $this->actingAs($this->admin)->getJson("/api/v1/admin/bookings/{$booking->id}");
+
+    $show->assertOk()
+        ->assertJsonPath('booking.cancellation_reason', 'customer')
+        ->assertJsonPath('booking.cancellation_note', null);
+
+    $list = $this->actingAs($this->admin)->getJson('/api/v1/admin/bookings');
+
+    $list->assertOk()
+        ->assertJsonPath('bookings.data.0.cancellation_reason', 'customer')
+        ->assertJsonPath('bookings.data.0.cancellation_note', null);
+});
+
 // ─── POST /admin/bookings/{booking}/assign-technician ────────────────────────
 
 test('admin assigns a technician and the action is audit-logged with the actor', function () {

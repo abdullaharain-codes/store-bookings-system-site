@@ -7,6 +7,7 @@ use App\Models\SlotHold;
 use App\Models\User;
 use App\Modules\Scheduling\Exceptions\SchedulingValidationException;
 use App\Modules\Scheduling\Services\BookingService;
+use App\Modules\Scheduling\Support\BookingRequestData;
 use App\Shared\Exceptions\ResourceNotFoundException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
@@ -18,6 +19,30 @@ function bookingService(): BookingService
     return app(BookingService::class);
 }
 
+function bookingData(
+    int $serviceId,
+    string $start,
+    string $end,
+    int $addressId,
+    string $issueType = 'hardware',
+    string $deviceType = 'laptop',
+    string $brand = 'Dell',
+    ?string $model = null,
+    string $problemDescription = 'Screen flickering after boot process.',
+): BookingRequestData {
+    return new BookingRequestData(
+        serviceId: $serviceId,
+        startsAt: Carbon::parse($start),
+        endsAt: Carbon::parse($end),
+        addressId: $addressId,
+        issueType: $issueType,
+        deviceType: $deviceType,
+        brand: $brand,
+        model: $model,
+        problemDescription: $problemDescription,
+    );
+}
+
 test('confirmBooking creates one pending ServiceBooking and releases the temporary hold', function () {
     $service = Service::factory()->create(['is_published' => true]);
     $user = User::factory()->create();
@@ -25,15 +50,17 @@ test('confirmBooking creates one pending ServiceBooking and releases the tempora
 
     $booking = bookingService()->confirmBooking(
         $user,
-        $service->id,
-        Carbon::parse('2026-10-05 10:00:00'),
-        Carbon::parse('2026-10-05 11:00:00'),
-        $address->id,
-        'hardware',
-        'laptop',
-        'Dell',
-        'XPS 15',
-        'Screen flickering after boot',
+        bookingData(
+            $service->id,
+            '2026-10-05 10:00:00',
+            '2026-10-05 11:00:00',
+            $address->id,
+            'hardware',
+            'laptop',
+            'Dell',
+            'XPS 15',
+            'Screen flickering after boot',
+        ),
     );
 
     // The transient hold must not outlive the booking-row creation.
@@ -70,15 +97,7 @@ test('confirmBooking against an already-held window throws and creates no bookin
 
     expect(fn () => bookingService()->confirmBooking(
         $user,
-        $service->id,
-        Carbon::parse('2026-10-05 10:00:00'),
-        Carbon::parse('2026-10-05 11:00:00'),
-        $address->id,
-        'hardware',
-        'laptop',
-        'Dell',
-        null,
-        'Screen flickering after boot process.',
+        bookingData($service->id, '2026-10-05 10:00:00', '2026-10-05 11:00:00', $address->id),
     ))->toThrow(SchedulingValidationException::class);
 
     expect(ServiceBooking::query()->count())->toBe(0);
@@ -100,15 +119,7 @@ test('confirmBooking against overlapping existing booking throws and creates not
 
     expect(fn () => bookingService()->confirmBooking(
         $user,
-        $service->id,
-        Carbon::parse('2026-10-05 10:30:00'),
-        Carbon::parse('2026-10-05 11:30:00'),
-        $address->id,
-        'hardware',
-        'laptop',
-        'Dell',
-        null,
-        'Screen flickering after boot process.',
+        bookingData($service->id, '2026-10-05 10:30:00', '2026-10-05 11:30:00', $address->id),
     ))->toThrow(SchedulingValidationException::class);
 
     expect(ServiceBooking::query()->count())->toBe(1);
@@ -121,15 +132,7 @@ test('confirmBooking for an unpublished service throws ResourceNotFoundException
 
     expect(fn () => bookingService()->confirmBooking(
         $user,
-        $service->id,
-        Carbon::parse('2026-10-05 10:00:00'),
-        Carbon::parse('2026-10-05 11:00:00'),
-        $address->id,
-        'hardware',
-        'laptop',
-        'Dell',
-        null,
-        'Screen flickering after boot process.',
+        bookingData($service->id, '2026-10-05 10:00:00', '2026-10-05 11:00:00', $address->id),
     ))->toThrow(ResourceNotFoundException::class);
 
     expect(ServiceBooking::query()->count())->toBe(0);
@@ -141,15 +144,7 @@ test('confirmBooking for a nonexistent service throws ResourceNotFoundException'
 
     expect(fn () => bookingService()->confirmBooking(
         $user,
-        999999,
-        Carbon::parse('2026-10-05 10:00:00'),
-        Carbon::parse('2026-10-05 11:00:00'),
-        $address->id,
-        'hardware',
-        'laptop',
-        'Dell',
-        null,
-        'Screen flickering after boot process.',
+        bookingData(999999, '2026-10-05 10:00:00', '2026-10-05 11:00:00', $address->id),
     ))->toThrow(ResourceNotFoundException::class);
 
     expect(ServiceBooking::query()->count())->toBe(0);
@@ -450,15 +445,17 @@ $address = App\Models\Address::query()->where('user_id', $user->id)->firstOrFail
 try {
     $booking = app(App\Modules\Scheduling\Services\BookingService::class)->confirmBooking(
         $user,
-        $service->id,
-        Illuminate\Support\Carbon::parse($startStr),
-        Illuminate\Support\Carbon::parse($endStr),
-        $address->id,
-        'hardware',
-        'laptop',
-        'Dell',
-        null,
-        'Concurrent booking attempt',
+        new App\Modules\Scheduling\Support\BookingRequestData(
+            serviceId: $service->id,
+            startsAt: Illuminate\Support\Carbon::parse($startStr),
+            endsAt: Illuminate\Support\Carbon::parse($endStr),
+            addressId: $address->id,
+            issueType: 'hardware',
+            deviceType: 'laptop',
+            brand: 'Dell',
+            model: null,
+            problemDescription: 'Concurrent booking attempt',
+        ),
     );
     echo 'OK:'.$booking->id;
 } catch (App\Modules\Scheduling\Exceptions\SchedulingValidationException) {
@@ -739,4 +736,43 @@ test('cancelBooking is an idempotency-safe rejection for already-cancelled booki
     $booking->refresh();
     expect($booking->status)->toBe($originalStatus)
         ->and($booking->cancelled_at->equalTo($originalCancelledAt))->toBeTrue();
+});
+
+test('customer cancel stores cancellation_reason customer', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+
+    $booking = ServiceBooking::factory()->confirmed()->create([
+        'user_id' => $user->id,
+        'scheduled_slot_start' => now()->addHours(5)->startOfHour(),
+        'scheduled_slot_end' => now()->addHours(5)->startOfHour()->addMinutes(60),
+    ]);
+
+    $cancelled = bookingService()->cancelBooking($user, $booking);
+
+    expect($cancelled->cancellation_reason)->toBe('customer')
+        ->and($cancelled->cancellation_note)->toBeNull();
+});
+
+test('admin cancel stores cancellation_reason admin', function () {
+    $owner = User::factory()->create();
+    $admin = User::factory()->create();
+
+    $booking = ServiceBooking::factory()->confirmed()->create([
+        'user_id' => $owner->id,
+        'scheduled_slot_start' => now()->addHour()->startOfHour(),
+        'scheduled_slot_end' => now()->addHour()->startOfHour()->addMinutes(60),
+    ]);
+
+    $cancelled = bookingService()->cancelBooking($admin, $booking, isAdmin: true);
+
+    expect($cancelled->cancellation_reason)->toBe('admin')
+        ->and($cancelled->cancellation_note)->toBeNull();
+});
+
+test('non-cancelled bookings have null cancellation reason and note', function () {
+    $booking = ServiceBooking::factory()->confirmed()->create();
+
+    expect($booking->fresh()->cancellation_reason)->toBeNull()
+        ->and($booking->fresh()->cancellation_note)->toBeNull();
 });
