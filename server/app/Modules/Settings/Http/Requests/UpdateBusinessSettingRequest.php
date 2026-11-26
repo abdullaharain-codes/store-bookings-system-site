@@ -29,6 +29,22 @@ class UpdateBusinessSettingRequest extends FormRequest
      *
      * @return array<string, mixed>
      */
+    protected function prepareForValidation(): void
+    {
+        $setting = $this->route('setting');
+
+        if ($setting?->key !== 'serviceable_cities' || ! is_array($this->input('value'))) {
+            return;
+        }
+
+        $trimmed = array_map(
+            static fn (mixed $city): mixed => is_string($city) ? trim($city) : $city,
+            $this->input('value'),
+        );
+
+        $this->merge(['value' => $trimmed]);
+    }
+
     public function rules(): array
     {
         $setting = $this->route('setting');
@@ -47,6 +63,42 @@ class UpdateBusinessSettingRequest extends FormRequest
         if (in_array($setting->key, self::MONEY_KEYS, true)) {
             return [
                 'value' => ['required', 'numeric', 'min:0', 'decimal:0,2'],
+            ];
+        }
+
+        if ($setting->key === 'serviceable_cities') {
+            return [
+                'value' => [
+                    'required',
+                    'array',
+                    'max:100',
+                    function (string $attribute, mixed $value, \Closure $fail): void {
+                        if (! is_array($value)) {
+                            return;
+                        }
+
+                        $seen = [];
+                        foreach ($value as $city) {
+                            if (! is_string($city)) {
+                                continue;
+                            }
+
+                            $normalized = mb_strtolower(trim($city));
+                            if ($normalized === '') {
+                                continue;
+                            }
+
+                            if (isset($seen[$normalized])) {
+                                $fail('The serviceable cities list must not contain duplicate cities.');
+
+                                return;
+                            }
+
+                            $seen[$normalized] = true;
+                        }
+                    },
+                ],
+                'value.*' => ['required', 'string', 'max:100'],
             ];
         }
 

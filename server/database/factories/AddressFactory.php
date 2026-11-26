@@ -23,7 +23,7 @@ class AddressFactory extends Factory
             'phone' => fake()->numerify('03##-#######'),
             'address_line_1' => fake()->address(),
             'address_line_2' => fake()->optional()->secondaryAddress(),
-            'city' => fake()->city(),
+            'city' => 'Karachi',
             'postal_code' => fake()->optional()->numerify('#####'),
             'map_link' => 'https://maps.app.goo.gl/'.fake()->regexify('[A-Za-z0-9]{10}'),
             'is_default' => false,

@@ -55,6 +55,9 @@ class SettingService
         return match ($type) {
             'boolean' => filter_var($value, FILTER_VALIDATE_BOOLEAN) ? '1' : '0',
             'integer' => (string) (int) $value,
+            'json' => is_array($value) || is_object($value)
+                ? (string) json_encode($value, JSON_UNESCAPED_UNICODE)
+                : (string) $value,
             default => (string) $value,
         };
     }

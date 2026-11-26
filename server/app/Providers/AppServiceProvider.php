@@ -108,13 +108,20 @@ class AppServiceProvider extends ServiceProvider
             );
         });
 
-        // SHIPPING FEE — guards the public, unauthenticated shipping-fee read
+        // SHIPPING FEE - guards the public, unauthenticated shipping-fee read
         // (D2) that checkout renders before any order exists. Guests have no
         // session to key off, so the IP is the honest identity, and the budget
         // matches the availability read (60/minute): a customer legitimately
         // reloads cart/checkout while a session toggles.
         RateLimiter::for('shipping-fee', function (Request $request) {
             return Limit::perMinute(60)->by('shipping-fee:'.$request->ip());
+        });
+
+        // SERVICEABLE AREAS - guards the public, unauthenticated serviceable-areas
+        // read (BE8b) that tells the storefront which cities are served. Same
+        // shape as shipping-fee: IP-keyed, 60/minute, cheap single-row read.
+        RateLimiter::for('serviceable-areas', function (Request $request) {
+            return Limit::perMinute(60)->by('serviceable-areas:'.$request->ip());
         });
     }
 }

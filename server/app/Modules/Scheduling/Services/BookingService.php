@@ -30,6 +30,7 @@ class BookingService
         private readonly SlotHoldService $slotHold,
         private readonly AuditLogger $auditLogger,
         private readonly NotificationService $notificationService,
+        private readonly ServiceableAreaService $serviceableAreas,
     ) {}
 
     /**
@@ -82,6 +83,12 @@ class BookingService
         if ($address->map_link === null) {
             throw new SchedulingValidationException(
                 'Please add a Google Maps link to this address before booking.',
+            );
+        }
+
+        if (! $this->serviceableAreas->isServiceable($address->city)) {
+            throw new SchedulingValidationException(
+                'We do not currently serve '.$address->city.'. Please choose an address in a served area.',
             );
         }
 

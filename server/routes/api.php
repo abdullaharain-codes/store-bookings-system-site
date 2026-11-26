@@ -27,6 +27,7 @@ use App\Http\Controllers\Api\V1\ProductController as PublicProductController;
 use App\Http\Controllers\Api\V1\ProfileController;
 use App\Http\Controllers\Api\V1\ReviewController as PublicReviewController;
 use App\Http\Controllers\Api\V1\ReviewShowcaseController as PublicReviewShowcaseController;
+use App\Http\Controllers\Api\V1\ServiceableAreasController;
 use App\Http\Controllers\Api\V1\ServiceController as PublicServiceController;
 use App\Http\Controllers\Api\V1\ShippingFeeController;
 use App\Http\Controllers\Api\V1\WishlistController;
@@ -96,7 +97,16 @@ Route::prefix('v1')->group(function () {
         ->middleware('throttle:shipping-fee')
         ->name('shipping-fee.show');
 
-    // Auth (session-based Sanctum SPA auth — session handled once by
+    // Public serviceable areas read (BE8b): the storefront checks this to
+    // know which cities are served. Exactly two fields, no other business
+    // setting. Read live (no cache) so an admin change shows immediately.
+    // Empty list means no restriction. Throttled like shipping-fee.
+    Route::get('/serviceable-areas', [ServiceableAreasController::class, 'show'])
+        ->middleware('throttle:serviceable-areas')
+        ->name('serviceable-areas.show');
+    Route::match(['post', 'put', 'patch', 'delete'], '/serviceable-areas', fn () => abort(405));
+
+    // Auth (session-based Sanctum SPA auth - session handled once by
     // statefulApi()'s EnsureFrontendRequestsAreStateful on the api group)
     // Named limiters per rules.md §9 / hardening item #8: login keyed
     // email+IP (compound), register keyed IP.

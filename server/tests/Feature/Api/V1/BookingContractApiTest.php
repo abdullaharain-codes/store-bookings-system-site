@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\Address;
+use App\Models\BusinessSetting;
 use App\Models\Service;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -103,6 +104,11 @@ it('returns 404 for foreign address on booking', function () {
 });
 
 it('stores and returns booking snapshots and complaint fields', function () {
+    BusinessSetting::query()->updateOrCreate(
+        ['key' => 'serviceable_cities'],
+        ['value' => json_encode(['Karachi', 'Lahore']), 'type' => 'json'],
+    );
+
     $user = User::factory()->create(['gender' => 'male']);
     $service = Service::factory()->create(['is_published' => true]);
     $address = Address::factory()->for($user)->create([
