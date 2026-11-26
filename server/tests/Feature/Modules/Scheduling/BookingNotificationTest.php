@@ -7,6 +7,7 @@ use App\Models\ServiceBooking;
 use App\Models\User;
 use App\Modules\Scheduling\Services\BookingService;
 use App\Notifications\BookingFinalPriceEntered;
+use App\Notifications\BookingRescheduled;
 use App\Notifications\BookingStatusChanged;
 use Illuminate\Contracts\Notifications\Dispatcher;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -252,5 +253,26 @@ test('a cancellation notification failure is swallowed and never fails the commi
     Log::shouldHaveReceived('error')->once()->withArgs(function (string $message) use ($booking) {
         return str_contains($message, (string) $booking->id)
             && str_contains($message, 'send failed');
+    });
+});
+
+test('reschedule dispatches BookingRescheduled notification to the booking customer', function () {
+    Notification::fake();
+
+    $service = Service::factory()->create(['is_published' => true]);
+    $booking = ServiceBooking::factory()->create([
+        'user_id' => $this->user->id,
+        'service_id' => $service->id,
+        'scheduled_slot_start' => now()->addHours(5)->startOfHour(),
+        'scheduled_slot_end' => now()->addHours(5)->startOfHour()->addMinutes(60),
+    ]);
+    $newStart = now()->addHours(8)->startOfHour();
+    $newEnd = $newStart->copy()->addMinutes(60);
+
+    $new = $this->bookingService->rescheduleBooking($this->user, $booking, $newStart, $newEnd);
+
+    Notification::assertSentTo($this->user, BookingRescheduled::class, function ($notification) use ($booking, $new) {
+        return $notification->booking->id === $new->id
+            && $notification->oldBookingId === $booking->id;
     });
 });

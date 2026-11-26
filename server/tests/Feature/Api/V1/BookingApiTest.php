@@ -294,3 +294,81 @@ test('customer cannot cancel another users booking via HTTP (IDOR)', function ()
         'status' => 'confirmed',
     ]);
 });
+
+// ��� POST /bookings/{booking}/reschedule (BE7b) ����������������������������
+
+test('guest cannot reschedule a booking', function () {
+    $booking = ServiceBooking::factory()->confirmed()->create();
+
+    $this->postJson("/api/v1/bookings/{$booking->id}/reschedule", [
+        'scheduled_slot_start' => now()->addHours(8)->toIso8601String(),
+        'scheduled_slot_end' => now()->addHours(9)->toIso8601String(),
+    ])->assertStatus(401);
+});
+
+test('customer can reschedule their own booking and receives 201 with new booking', function () {
+    $service = Service::factory()->create(['is_published' => true]);
+    $address = Address::factory()->create(['user_id' => $this->user->id]);
+    $booking = ServiceBooking::factory()->confirmed()->create([
+        'user_id' => $this->user->id,
+        'service_id' => $service->id,
+        'address_id' => $address->id,
+        'scheduled_slot_start' => now()->addHours(5)->startOfHour(),
+        'scheduled_slot_end' => now()->addHours(5)->startOfHour()->addMinutes(60),
+    ]);
+
+    $newStart = now()->addHours(8)->startOfHour();
+    $newEnd = $newStart->copy()->addMinutes(60);
+
+    $response = $this->actingAs($this->user)->postJson("/api/v1/bookings/{$booking->id}/reschedule", [
+        'scheduled_slot_start' => $newStart->toIso8601String(),
+        'scheduled_slot_end' => $newEnd->toIso8601String(),
+    ]);
+
+    $response->assertStatus(201)
+        ->assertJsonPath('booking.status', 'confirmed')
+        ->assertJsonPath('booking.rescheduled_from_id', $booking->id);
+
+    $this->assertDatabaseHas('service_bookings', [
+        'id' => $booking->id,
+        'status' => 'cancelled',
+        'cancellation_reason' => 'rescheduled',
+    ]);
+});
+
+test('customer reschedule returns 404 for foreign booking', function () {
+    $booking = ServiceBooking::factory()->confirmed()->create([
+        'user_id' => $this->otherUser->id,
+        'scheduled_slot_start' => now()->addHours(5)->startOfHour(),
+        'scheduled_slot_end' => now()->addHours(5)->startOfHour()->addMinutes(60),
+    ]);
+
+    $this->actingAs($this->user)->postJson("/api/v1/bookings/{$booking->id}/reschedule", [
+        'scheduled_slot_start' => now()->addHours(8)->toIso8601String(),
+        'scheduled_slot_end' => now()->addHours(9)->toIso8601String(),
+    ])->assertStatus(404);
+
+    expect($booking->fresh()->status)->toBe('confirmed');
+});
+
+test('customer reschedule is blocked by cutoff and validation errors are 422', function () {
+    $booking = ServiceBooking::factory()->confirmed()->create([
+        'user_id' => $this->user->id,
+        'scheduled_slot_start' => now()->addHour()->startOfHour(),
+        'scheduled_slot_end' => now()->addHour()->startOfHour()->addMinutes(60),
+    ]);
+
+    $this->actingAs($this->user)->postJson("/api/v1/bookings/{$booking->id}/reschedule", [
+        'scheduled_slot_start' => now()->addHours(8)->toIso8601String(),
+        'scheduled_slot_end' => now()->addHours(9)->toIso8601String(),
+    ])->assertStatus(422);
+
+    $this->actingAs($this->user)->postJson("/api/v1/bookings/{$booking->id}/reschedule", [
+        'scheduled_slot_start' => now()->addHours(9)->toIso8601String(),
+        'scheduled_slot_end' => now()->addHours(8)->toIso8601String(),
+    ])->assertStatus(422)->assertJsonValidationErrors(['scheduled_slot_end']);
+
+    $this->actingAs($this->user)->postJson("/api/v1/bookings/{$booking->id}/reschedule", [])
+        ->assertStatus(422)
+        ->assertJsonValidationErrors(['scheduled_slot_start', 'scheduled_slot_end']);
+});

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Models\ServiceBooking;
+use App\Modules\Scheduling\Http\Requests\RescheduleBookingRequest;
 use App\Modules\Scheduling\Http\Requests\StoreBookingRequest;
 use App\Modules\Scheduling\Services\BookingService;
 use App\Modules\Scheduling\Support\BookingRequestData;
@@ -79,5 +80,21 @@ class BookingController extends Controller
         return response()->json([
             'booking' => $booking,
         ]);
+    }
+
+    public function reschedule(RescheduleBookingRequest $request, ServiceBooking $booking): JsonResponse
+    {
+        $window = $request->window();
+
+        $newBooking = $this->bookingService->rescheduleBooking(
+            $request->user(),
+            $booking,
+            $window['scheduled_slot_start'],
+            $window['scheduled_slot_end'],
+        );
+
+        return response()->json([
+            'booking' => $newBooking->load('service'),
+        ], 201);
     }
 }

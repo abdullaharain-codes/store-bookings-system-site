@@ -159,6 +159,7 @@ Route::prefix('v1')->group(function () {
         Route::get('/bookings', [BookingController::class, 'index']);
         Route::get('/bookings/{booking}', [BookingController::class, 'show']);
         Route::post('/bookings/{booking}/cancel', [BookingController::class, 'cancel']);
+        Route::post('/bookings/{booking}/reschedule', [BookingController::class, 'reschedule']);
 
         // ── Profile (PRD §5.2 customer self-service) ──────────────────────
         // Protected, no admin gate, no {id} in the URL — the authenticated
@@ -236,6 +237,7 @@ Route::prefix('v1')->group(function () {
             Route::post('/bookings/{booking}/assign-technician', [AdminBookingController::class, 'assignTechnician']);
             Route::patch('/bookings/{booking}/status', [AdminBookingController::class, 'updateStatus']);
             Route::post('/bookings/{booking}/final-price', [AdminBookingController::class, 'enterFinalPrice']);
+            Route::post('/bookings/{booking}/reschedule', [AdminBookingController::class, 'reschedule']);
 
             // ── Homepage Banners (PRD §8) ────────────────────────────────
             // Admin CRUD + publish/unpublish + reorder of the hero carousel.

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\ServiceBooking;
+use App\Modules\Scheduling\Http\Requests\AdminRescheduleBookingRequest;
 use App\Modules\Scheduling\Http\Requests\AssignTechnicianRequest;
 use App\Modules\Scheduling\Http\Requests\EnterFinalPriceRequest;
 use App\Modules\Scheduling\Http\Requests\UpdateBookingStatusRequest;
@@ -103,5 +104,23 @@ class BookingController extends Controller
         return response()->json([
             'booking' => $booking,
         ]);
+    }
+
+    public function reschedule(AdminRescheduleBookingRequest $request, ServiceBooking $booking): JsonResponse
+    {
+        $window = $request->window();
+
+        $newBooking = $this->bookingService->rescheduleBooking(
+            $request->user(),
+            $booking,
+            $window['scheduled_slot_start'],
+            $window['scheduled_slot_end'],
+            isAdmin: true,
+            reason: $request->validated('reason'),
+        );
+
+        return response()->json([
+            'booking' => $newBooking->load('service'),
+        ], 201);
     }
 }

@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\Role;
+use App\Models\Service;
 use App\Models\ServiceBooking;
 use App\Models\User;
 use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
@@ -32,6 +33,11 @@ test('guest gets 401 on every admin booking endpoint', function () {
         ]],
         ['patchJson', "/api/v1/admin/bookings/{$booking->id}/status", ['status' => 'confirmed']],
         ['postJson', "/api/v1/admin/bookings/{$booking->id}/final-price", ['final_price' => 1000]],
+        ['postJson', "/api/v1/admin/bookings/{$booking->id}/reschedule", [
+            'scheduled_slot_start' => now()->addHours(8)->toIso8601String(),
+            'scheduled_slot_end' => now()->addHours(9)->toIso8601String(),
+            'reason' => 'Admin reason',
+        ]],
     ];
 
     foreach ($endpoints as [$method, $uri, $payload]) {
@@ -50,6 +56,11 @@ test('customer gets 403 on every admin booking endpoint', function () {
         ]],
         ['patchJson', "/api/v1/admin/bookings/{$booking->id}/status", ['status' => 'confirmed']],
         ['postJson', "/api/v1/admin/bookings/{$booking->id}/final-price", ['final_price' => 1000]],
+        ['postJson', "/api/v1/admin/bookings/{$booking->id}/reschedule", [
+            'scheduled_slot_start' => now()->addHours(8)->toIso8601String(),
+            'scheduled_slot_end' => now()->addHours(9)->toIso8601String(),
+            'reason' => 'Admin reason',
+        ]],
     ];
 
     foreach ($endpoints as [$method, $uri, $payload]) {
@@ -342,4 +353,55 @@ test('cancelling an already-cancelled booking is an idempotency-safe 422', funct
         'id' => $booking->id,
         'status' => 'cancelled',
     ]);
+});
+
+// ��� POST /admin/bookings/{booking}/reschedule (BE7b) ����������������������
+
+test('admin can reschedule a booking with reason and bypasses cutoff', function () {
+    $service = Service::factory()->create(['is_published' => true]);
+    $booking = ServiceBooking::factory()->confirmed()->create([
+        'user_id' => $this->customer->id,
+        'service_id' => $service->id,
+        'scheduled_slot_start' => now()->addHour()->startOfHour(),
+        'scheduled_slot_end' => now()->addHour()->startOfHour()->addMinutes(60),
+    ]);
+
+    $newStart = now()->addHours(8)->startOfHour();
+    $newEnd = $newStart->copy()->addMinutes(60);
+
+    $response = $this->actingAs($this->admin)->postJson("/api/v1/admin/bookings/{$booking->id}/reschedule", [
+        'scheduled_slot_start' => $newStart->toIso8601String(),
+        'scheduled_slot_end' => $newEnd->toIso8601String(),
+        'reason' => 'Customer asked by phone',
+    ]);
+
+    $response->assertStatus(201)
+        ->assertJsonPath('booking.status', 'confirmed')
+        ->assertJsonPath('booking.rescheduled_from_id', $booking->id);
+
+    $this->assertDatabaseHas('service_bookings', [
+        'id' => $booking->id,
+        'status' => 'cancelled',
+        'cancellation_reason' => 'rescheduled',
+        'cancellation_note' => 'Customer asked by phone',
+    ]);
+});
+
+test('admin reschedule requires reason and valid window', function () {
+    $booking = ServiceBooking::factory()->confirmed()->create([
+        'user_id' => $this->customer->id,
+        'scheduled_slot_start' => now()->addHours(5)->startOfHour(),
+        'scheduled_slot_end' => now()->addHours(5)->startOfHour()->addMinutes(60),
+    ]);
+
+    $this->actingAs($this->admin)->postJson("/api/v1/admin/bookings/{$booking->id}/reschedule", [
+        'scheduled_slot_start' => now()->addHours(8)->toIso8601String(),
+        'scheduled_slot_end' => now()->addHours(9)->toIso8601String(),
+    ])->assertStatus(422)->assertJsonValidationErrors(['reason']);
+
+    $this->actingAs($this->admin)->postJson("/api/v1/admin/bookings/{$booking->id}/reschedule", [
+        'scheduled_slot_start' => now()->addHours(9)->toIso8601String(),
+        'scheduled_slot_end' => now()->addHours(8)->toIso8601String(),
+        'reason' => 'ok',
+    ])->assertStatus(422)->assertJsonValidationErrors(['reason', 'scheduled_slot_end']);
 });

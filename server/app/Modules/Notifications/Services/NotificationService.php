@@ -7,6 +7,7 @@ use App\Models\ServiceBooking;
 use App\Models\User;
 use App\Modules\Notifications\Contracts\NotificationRepositoryInterface;
 use App\Notifications\BookingFinalPriceEntered;
+use App\Notifications\BookingRescheduled;
 use App\Notifications\BookingStatusChanged;
 use App\Notifications\OrderStatusChanged;
 use App\Shared\Exceptions\ResourceNotFoundException;
@@ -82,6 +83,22 @@ class NotificationService
         } catch (\Throwable $e) {
             Log::error(
                 "Failed to send booking final-price notification for booking {$booking->id}: {$e->getMessage()}",
+            );
+        }
+    }
+
+    /**
+     * Record + email a booking reschedule to the booking's customer (BE7b).
+     * Fired after BookingService's reschedule transaction commits; logged and
+     * swallowed on failure, never rethrown (SRS 6.4).
+     */
+    public function notifyBookingRescheduled(ServiceBooking $newBooking, ServiceBooking $oldBooking, bool $isAdmin = false, ?string $reason = null): void
+    {
+        try {
+            $newBooking->user->notify(new BookingRescheduled($newBooking, $oldBooking->id, $isAdmin, $reason));
+        } catch (\Throwable $e) {
+            Log::error(
+                "Failed to send booking reschedule notification for booking {$newBooking->id}: {$e->getMessage()}",
             );
         }
     }

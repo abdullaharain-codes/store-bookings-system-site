@@ -515,6 +515,149 @@ class BookingService
     }
 
     /**
+     * Reschedule a booking: cancel the old row and create a new booking in the
+     * same transaction. Snapshots/complaint data are copied from the old
+     * booking; the new slot is validated with the same hold/overlap rules as
+     * confirmBooking.
+     *
+     * @throws ResourceNotFoundException
+     * @throws SchedulingValidationException
+     */
+    public function rescheduleBooking(
+        User $actor,
+        ServiceBooking $booking,
+        Carbon $startsAt,
+        Carbon $endsAt,
+        bool $isAdmin = false,
+        ?string $reason = null,
+    ): ServiceBooking {
+        if (! $isAdmin && $booking->user_id !== $actor->id) {
+            throw new ResourceNotFoundException;
+        }
+
+        if ($booking->status === 'completed') {
+            throw new SchedulingValidationException('A completed booking cannot be rescheduled.');
+        }
+
+        if ($booking->status === 'cancelled') {
+            throw new SchedulingValidationException('A cancelled booking cannot be rescheduled.');
+        }
+
+        if ($booking->status === 'technician_on_the_way') {
+            throw new SchedulingValidationException(
+                'This booking cannot be rescheduled because the technician is already on the way.',
+            );
+        }
+
+        if (! in_array($booking->status, ['pending', 'confirmed'], true)) {
+            throw new SchedulingValidationException('Only pending or confirmed bookings can be rescheduled.');
+        }
+
+        $cutoffMinutes = (int) BusinessSetting::getValue('cancellation_cutoff_minutes', 120);
+        $cutoff = $booking->scheduled_slot_start->copy()->subMinutes($cutoffMinutes);
+        if (! $isAdmin && now()->greaterThanOrEqualTo($cutoff)) {
+            throw new SchedulingValidationException(
+                "Bookings can only be rescheduled at least {$cutoffMinutes} minutes before the scheduled slot.",
+            );
+        }
+
+        if ($booking->scheduled_slot_start->equalTo($startsAt) && $booking->scheduled_slot_end->equalTo($endsAt)) {
+            throw new SchedulingValidationException('The new booking slot must be different from the current slot.');
+        }
+
+        $oldBookingId = $booking->id;
+
+        $newBooking = DB::transaction(function () use ($actor, $booking, $startsAt, $endsAt, $isAdmin, $reason, $oldBookingId) {
+            $booking = ServiceBooking::query()->whereKey($oldBookingId)->lockForUpdate()->firstOrFail();
+
+            if (! $isAdmin && $booking->user_id !== $actor->id) {
+                throw new ResourceNotFoundException;
+            }
+
+            if ($booking->status === 'completed') {
+                throw new SchedulingValidationException('A completed booking cannot be rescheduled.');
+            }
+
+            if ($booking->status === 'cancelled') {
+                throw new SchedulingValidationException('A cancelled booking cannot be rescheduled.');
+            }
+
+            if ($booking->status === 'technician_on_the_way') {
+                throw new SchedulingValidationException(
+                    'This booking cannot be rescheduled because the technician is already on the way.',
+                );
+            }
+
+            if (! in_array($booking->status, ['pending', 'confirmed'], true)) {
+                throw new SchedulingValidationException('Only pending or confirmed bookings can be rescheduled.');
+            }
+
+            $previousStatus = $booking->status;
+
+            // Cancel the old row FIRST so its own window does not block the new
+            // booking when windows overlap (e.g. shifting by 30 minutes).
+            $booking->update([
+                'status' => 'cancelled',
+                'cancelled_at' => now(),
+                'cancellation_reason' => BookingCancellationReasons::RESCHEDULED,
+                'cancellation_note' => $isAdmin ? $reason : null,
+            ]);
+
+            $service = Service::query()
+                ->where('id', $booking->service_id)
+                ->where('is_published', true)
+                ->first();
+
+            if (! $service) {
+                throw new ResourceNotFoundException;
+            }
+
+            $hold = $this->slotHold->attemptHold($startsAt, $endsAt, $actor->id);
+            $this->assertNoOverlappingBooking($startsAt, $endsAt);
+
+            $newBooking = ServiceBooking::query()->create([
+                'user_id' => $booking->user_id,
+                'service_id' => $booking->service_id,
+                'technician_id' => $booking->technician_id,
+                'address_id' => $booking->address_id,
+                'recipient_name' => $booking->recipient_name,
+                'phone' => $booking->phone,
+                'address_line_1' => $booking->address_line_1,
+                'address_line_2' => $booking->address_line_2,
+                'city' => $booking->city,
+                'postal_code' => $booking->postal_code,
+                'map_link' => $booking->map_link,
+                'customer_gender' => $booking->customer_gender,
+                'scheduled_slot_start' => $startsAt,
+                'scheduled_slot_end' => $endsAt,
+                'status' => $previousStatus,
+                'problem_description' => $booking->problem_description,
+                'issue_type' => $booking->issue_type,
+                'device_type' => $booking->device_type,
+                'brand' => $booking->brand,
+                'model' => $booking->model,
+                'rescheduled_from_id' => $booking->id,
+            ]);
+
+            $this->auditLogger->log('ServiceBooking', $booking->id, 'rescheduled', [
+                'new_booking_id' => $newBooking->id,
+                'previous_status' => $previousStatus,
+                'cancelled_by' => $isAdmin ? 'admin' : 'customer',
+                'reason' => $isAdmin ? $reason : null,
+            ]);
+            $this->auditLogger->log('ServiceBooking', $newBooking->id, 'created');
+
+            $this->slotHold->releaseHold($hold);
+
+            return $newBooking;
+        });
+
+        $this->notificationService->notifyBookingRescheduled($newBooking, $booking, $isAdmin, $reason);
+
+        return $newBooking;
+    }
+
+    /**
      * The booking-row half of double-booking prevention: an overlapping
      * NON-cancelled booking owns its window. Half-open [start, end) overlap,
      * the same predicate as slot_holds, served by the composite

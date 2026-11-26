@@ -776,3 +776,274 @@ test('non-cancelled bookings have null cancellation reason and note', function (
     expect($booking->fresh()->cancellation_reason)->toBeNull()
         ->and($booking->fresh()->cancellation_note)->toBeNull();
 });
+
+// ��� rescheduleBooking (BE7b) �����������������������������������������������
+
+test('customer can reschedule pending booking to pending and snapshots/complaint are copied from old booking', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    $service = Service::factory()->create(['is_published' => true]);
+    $address = Address::factory()->create(['user_id' => $user->id, 'city' => 'Karachi', 'recipient_name' => 'Old Name']);
+    $technician = User::factory()->create();
+
+    $old = ServiceBooking::factory()->create([
+        'user_id' => $user->id,
+        'service_id' => $service->id,
+        'address_id' => $address->id,
+        'technician_id' => $technician->id,
+        'status' => 'pending',
+        'recipient_name' => 'Snapshot Name',
+        'phone' => '+923001112222',
+        'address_line_1' => 'Snapshot Line 1',
+        'address_line_2' => 'Snapshot Line 2',
+        'city' => 'Karachi',
+        'postal_code' => '75500',
+        'map_link' => 'https://maps.app.goo.gl/old-snapshot',
+        'customer_gender' => 'male',
+        'issue_type' => 'hardware',
+        'device_type' => 'laptop',
+        'brand' => 'Dell',
+        'model' => 'XPS',
+        'problem_description' => 'Original problem description',
+        'scheduled_slot_start' => now()->addHours(5)->startOfHour(),
+        'scheduled_slot_end' => now()->addHours(5)->startOfHour()->addMinutes(60),
+    ]);
+
+    $address->update(['recipient_name' => 'Changed Name', 'city' => 'Lahore']);
+    $address->delete();
+
+    $newStart = now()->addHours(8)->startOfHour();
+    $newEnd = $newStart->copy()->addMinutes(60);
+
+    $new = bookingService()->rescheduleBooking($user, $old, $newStart, $newEnd);
+
+    expect($new->id)->not->toBe($old->id)
+        ->and($new->status)->toBe('pending')
+        ->and($new->user_id)->toBe($user->id)
+        ->and($new->service_id)->toBe($service->id)
+        ->and($new->technician_id)->toBe($technician->id)
+        ->and($new->address_id)->toBeNull()
+        ->and($new->rescheduled_from_id)->toBe($old->id)
+        ->and($new->recipient_name)->toBe('Snapshot Name')
+        ->and($new->phone)->toBe('+923001112222')
+        ->and($new->address_line_1)->toBe('Snapshot Line 1')
+        ->and($new->address_line_2)->toBe('Snapshot Line 2')
+        ->and($new->city)->toBe('Karachi')
+        ->and($new->postal_code)->toBe('75500')
+        ->and($new->map_link)->toBe('https://maps.app.goo.gl/old-snapshot')
+        ->and($new->customer_gender)->toBe('male')
+        ->and($new->issue_type)->toBe('hardware')
+        ->and($new->device_type)->toBe('laptop')
+        ->and($new->brand)->toBe('Dell')
+        ->and($new->model)->toBe('XPS')
+        ->and($new->problem_description)->toBe('Original problem description')
+        ->and($new->scheduled_slot_start->equalTo($newStart))->toBeTrue()
+        ->and($new->scheduled_slot_end->equalTo($newEnd))->toBeTrue();
+
+    $old->refresh();
+    expect($old->status)->toBe('cancelled')
+        ->and($old->cancellation_reason)->toBe('rescheduled')
+        ->and($old->cancellation_note)->toBeNull()
+        ->and($old->cancelled_at)->not->toBeNull();
+});
+
+test('customer can reschedule confirmed booking to confirmed and technician carried', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    $technician = User::factory()->create();
+    $service = Service::factory()->create(['is_published' => true]);
+    $old = ServiceBooking::factory()->confirmed()->create([
+        'user_id' => $user->id,
+        'service_id' => $service->id,
+        'technician_id' => $technician->id,
+        'scheduled_slot_start' => now()->addHours(5)->startOfHour(),
+        'scheduled_slot_end' => now()->addHours(5)->startOfHour()->addMinutes(60),
+    ]);
+
+    $newStart = now()->addHours(8)->startOfHour();
+    $new = bookingService()->rescheduleBooking($user, $old, $newStart, $newStart->copy()->addMinutes(60));
+
+    expect($new->status)->toBe('confirmed')
+        ->and($new->technician_id)->toBe($technician->id)
+        ->and($old->fresh()->status)->toBe('cancelled')
+        ->and($old->fresh()->cancellation_reason)->toBe('rescheduled');
+});
+
+test('reschedule frees old slot for another user', function () {
+    $user = User::factory()->create();
+    $other = User::factory()->create();
+    $service = Service::factory()->create(['is_published' => true]);
+    $address = Address::factory()->create(['user_id' => $user->id]);
+    $otherAddress = Address::factory()->create(['user_id' => $other->id]);
+
+    $oldStart = now()->addHours(5)->startOfHour();
+    $oldEnd = $oldStart->copy()->addMinutes(60);
+    $old = ServiceBooking::factory()->confirmed()->create([
+        'user_id' => $user->id,
+        'service_id' => $service->id,
+        'address_id' => $address->id,
+        'scheduled_slot_start' => $oldStart,
+        'scheduled_slot_end' => $oldEnd,
+    ]);
+
+    bookingService()->rescheduleBooking($user, $old, now()->addHours(8)->startOfHour(), now()->addHours(8)->startOfHour()->addMinutes(60));
+
+    $otherBooking = bookingService()->confirmBooking($other, bookingData($service->id, $oldStart->toDateTimeString(), $oldEnd->toDateTimeString(), $otherAddress->id));
+
+    expect($otherBooking->status)->toBe('pending');
+});
+
+test('reschedule overlapping shift succeeds when old row is cancelled first', function () {
+    $user = User::factory()->create();
+    $service = Service::factory()->create(['is_published' => true]);
+    $old = ServiceBooking::factory()->confirmed()->create([
+        'user_id' => $user->id,
+        'service_id' => $service->id,
+        'scheduled_slot_start' => now()->addHours(5)->startOfHour(),
+        'scheduled_slot_end' => now()->addHours(5)->startOfHour()->addMinutes(60),
+    ]);
+
+    $newStart = $old->scheduled_slot_start->copy()->addMinutes(30);
+    $newEnd = $old->scheduled_slot_end->copy()->addMinutes(30);
+
+    $new = bookingService()->rescheduleBooking($user, $old, $newStart, $newEnd);
+
+    expect($new->scheduled_slot_start->equalTo($newStart))->toBeTrue()
+        ->and($old->fresh()->status)->toBe('cancelled');
+});
+
+test('reschedule identical window is rejected with 422', function () {
+    $user = User::factory()->create();
+    $old = ServiceBooking::factory()->confirmed()->create([
+        'user_id' => $user->id,
+        'scheduled_slot_start' => now()->addHours(5)->startOfHour(),
+        'scheduled_slot_end' => now()->addHours(5)->startOfHour()->addMinutes(60),
+    ]);
+
+    expect(fn () => bookingService()->rescheduleBooking($user, $old, $old->scheduled_slot_start->copy(), $old->scheduled_slot_end->copy()))
+        ->toThrow(SchedulingValidationException::class);
+
+    expect($old->fresh()->status)->toBe('confirmed');
+});
+
+test('reschedule conflict with another booking is rejected and old booking remains active', function () {
+    $user = User::factory()->create();
+    $service = Service::factory()->create(['is_published' => true]);
+    $old = ServiceBooking::factory()->confirmed()->create([
+        'user_id' => $user->id,
+        'service_id' => $service->id,
+        'scheduled_slot_start' => now()->addHours(5)->startOfHour(),
+        'scheduled_slot_end' => now()->addHours(5)->startOfHour()->addMinutes(60),
+    ]);
+    ServiceBooking::factory()->confirmed()->create([
+        'service_id' => $service->id,
+        'scheduled_slot_start' => now()->addHours(8)->startOfHour(),
+        'scheduled_slot_end' => now()->addHours(8)->startOfHour()->addMinutes(60),
+    ]);
+
+    expect(fn () => bookingService()->rescheduleBooking($user, $old, now()->addHours(8)->startOfHour(), now()->addHours(8)->startOfHour()->addMinutes(60)))
+        ->toThrow(SchedulingValidationException::class);
+
+    expect($old->fresh()->status)->toBe('confirmed')
+        ->and(ServiceBooking::query()->count())->toBe(2);
+});
+
+test('customer reschedule is blocked by cutoff but admin can reschedule', function () {
+    $user = User::factory()->create();
+    $admin = User::factory()->create();
+    $service = Service::factory()->create(['is_published' => true]);
+    $old = ServiceBooking::factory()->confirmed()->create([
+        'user_id' => $user->id,
+        'service_id' => $service->id,
+        'scheduled_slot_start' => now()->addHour()->startOfHour(),
+        'scheduled_slot_end' => now()->addHour()->startOfHour()->addMinutes(60),
+    ]);
+
+    expect(fn () => bookingService()->rescheduleBooking($user, $old, now()->addHours(8)->startOfHour(), now()->addHours(8)->startOfHour()->addMinutes(60)))
+        ->toThrow(SchedulingValidationException::class);
+
+    $new = bookingService()->rescheduleBooking($admin, $old, now()->addHours(8)->startOfHour(), now()->addHours(8)->startOfHour()->addMinutes(60), isAdmin: true, reason: 'Admin moved booking');
+
+    expect($new->status)->toBe('confirmed')
+        ->and($old->fresh()->cancellation_reason)->toBe('rescheduled')
+        ->and($old->fresh()->cancellation_note)->toBe('Admin moved booking');
+});
+
+test('reschedule rejects technician_on_the_way completed and cancelled bookings', function () {
+    $user = User::factory()->create();
+    $admin = User::factory()->create();
+    $newStart = now()->addHours(8)->startOfHour();
+    $newEnd = $newStart->copy()->addMinutes(60);
+
+    $otw = ServiceBooking::factory()->technicianOnTheWay()->create([
+        'user_id' => $user->id,
+        'scheduled_slot_start' => now()->addHours(10)->startOfHour(),
+        'scheduled_slot_end' => now()->addHours(10)->startOfHour()->addMinutes(60),
+    ]);
+    expect(fn () => bookingService()->rescheduleBooking($user, $otw, $newStart, $newEnd))->toThrow(SchedulingValidationException::class);
+    expect(fn () => bookingService()->rescheduleBooking($admin, $otw, $newStart, $newEnd, isAdmin: true, reason: 'reason'))->toThrow(SchedulingValidationException::class);
+
+    $completed = ServiceBooking::factory()->completed()->create(['user_id' => $user->id]);
+    expect(fn () => bookingService()->rescheduleBooking($user, $completed, $newStart, $newEnd))->toThrow(SchedulingValidationException::class);
+
+    $cancelled = ServiceBooking::factory()->cancelled()->create(['user_id' => $user->id]);
+    expect(fn () => bookingService()->rescheduleBooking($user, $cancelled, $newStart, $newEnd))->toThrow(SchedulingValidationException::class);
+});
+
+test('customer cannot reschedule foreign booking', function () {
+    $user = User::factory()->create();
+    $other = User::factory()->create();
+    $booking = ServiceBooking::factory()->confirmed()->create([
+        'user_id' => $other->id,
+        'scheduled_slot_start' => now()->addHours(5)->startOfHour(),
+        'scheduled_slot_end' => now()->addHours(5)->startOfHour()->addMinutes(60),
+    ]);
+
+    expect(fn () => bookingService()->rescheduleBooking($user, $booking, now()->addHours(8)->startOfHour(), now()->addHours(8)->startOfHour()->addMinutes(60)))
+        ->toThrow(ResourceNotFoundException::class);
+});
+
+test('rescheduled booking can be rescheduled again with no limit', function () {
+    $user = User::factory()->create();
+    $service = Service::factory()->create(['is_published' => true]);
+    $old = ServiceBooking::factory()->confirmed()->create([
+        'user_id' => $user->id,
+        'service_id' => $service->id,
+        'scheduled_slot_start' => now()->addHours(5)->startOfHour(),
+        'scheduled_slot_end' => now()->addHours(5)->startOfHour()->addMinutes(60),
+    ]);
+
+    $second = bookingService()->rescheduleBooking($user, $old, now()->addHours(8)->startOfHour(), now()->addHours(8)->startOfHour()->addMinutes(60));
+    $third = bookingService()->rescheduleBooking($user, $second, now()->addHours(10)->startOfHour(), now()->addHours(10)->startOfHour()->addMinutes(60));
+
+    expect($third->rescheduled_from_id)->toBe($second->id)
+        ->and($second->fresh()->cancellation_reason)->toBe('rescheduled')
+        ->and($second->fresh()->status)->toBe('cancelled')
+        ->and($third->status)->toBe('confirmed');
+});
+
+test('reschedule writes audit rows for old and new booking', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    $service = Service::factory()->create(['is_published' => true]);
+    $old = ServiceBooking::factory()->confirmed()->create([
+        'user_id' => $user->id,
+        'service_id' => $service->id,
+        'scheduled_slot_start' => now()->addHours(5)->startOfHour(),
+        'scheduled_slot_end' => now()->addHours(5)->startOfHour()->addMinutes(60),
+    ]);
+
+    $new = bookingService()->rescheduleBooking($user, $old, now()->addHours(8)->startOfHour(), now()->addHours(8)->startOfHour()->addMinutes(60));
+
+    $this->assertDatabaseHas('audit_logs', [
+        'entity' => 'ServiceBooking',
+        'entity_id' => $old->id,
+        'action' => 'rescheduled',
+        'actor_id' => $user->id,
+    ]);
+    $this->assertDatabaseHas('audit_logs', [
+        'entity' => 'ServiceBooking',
+        'entity_id' => $new->id,
+        'action' => 'created',
+    ]);
+});
